@@ -1,0 +1,7 @@
+/* Custom gradient background for ThesisSync UI */
+.gradient-bg {
+	background: linear-gradient(135deg, #6B73FF 0%, #000DFF 100%);
+}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
