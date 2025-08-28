@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useLogoutWithRedirect } from '../hooks/useLogoutWithRedirect';
 
 const Navbar = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { logout } = useAuth();
+  const logout = useLogoutWithRedirect();
 
   return (
     <nav className="gradient-bg text-white shadow-lg">

@@ -103,10 +103,10 @@ const MessageList = ({ messages, currentUser, groupMembers }) => {
             {!isOwnMessage && (
               <div className="flex items-center space-x-2 mb-1">
                 <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-semibold">
-                  {message.sender.username.charAt(0).toUpperCase()}
+                  {(message.sender.name || message.sender.username || message.sender.email || 'U').charAt(0).toUpperCase()}
                 </div>
                 <span className="text-xs text-gray-600 font-medium">
-                  {message.sender.username}
+                  {message.sender.name || message.sender.username || 'Unknown'}
                 </span>
               </div>
             )}

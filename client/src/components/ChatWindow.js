@@ -23,12 +23,19 @@ const ChatWindow = ({ group, user, onAddMember }) => {
       hasUser: !!user
     });
     
-    if (group) {
-      console.log('🔥 [ChatWindow] Group exists, setting up...');
+    const socket = socketService.getSocket();
+    if (group && socket) {
+      // Leave previous group if any
+      if (window._prevGroupId && window._prevGroupId !== group._id) {
+        socketService.leaveGroup(window._prevGroupId);
+      }
+      window._prevGroupId = group._id;
+      // Join the new group
+      socketService.joinGroup(group._id);
       fetchMessages();
       setupSocketListeners();
     } else {
-      console.log('🔥 [ChatWindow] No group selected');
+      console.log('🔥 [ChatWindow] No group selected or socket not connected');
     }
 
     return () => {
@@ -69,7 +76,11 @@ const ChatWindow = ({ group, user, onAddMember }) => {
     const socket = socketService.getSocket();
     if (socket) {
       socket.on('message-received', (messageData) => {
-        setMessages(prev => [...prev, messageData]);
+        // Only add message if current user is NOT the sender (to avoid duplication)
+        const currentUserId = user?.userId || user?.id;
+        if (messageData.sender?._id !== currentUserId && messageData.sender?.userId !== currentUserId) {
+          setMessages(prev => [...prev, messageData]);
+        }
       });
 
       socket.on('user-typing', ({ username }) => {

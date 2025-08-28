@@ -10,6 +10,14 @@ const authRoutes = require('./routes/auth');
 const groupRoutes = require('./routes/groups');
 const messageRoutes = require('./routes/messages');
 const debugRoutes = require('./routes/debug');
+const userRoutes = require('./routes/users');
+const thesisIdeaRoutes = require('./routes/thesisIdeas');
+const teamRequestRoutes = require('./routes/teamRequests');
+const thesisProjectRoutes = require('./routes/thesisProjects');
+const notificationRoutes = require('./routes/notifications');
+const emailTestRoutes = require('./routes/emailTest');
+const simpleEmailTestRoutes = require('./routes/simpleEmailTest');
+const activityRoutes = require('./routes/activity');
 const User = require('./models/User');
 
 const app = express();
@@ -21,6 +29,14 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/thesis-ideas', thesisIdeaRoutes);
+app.use('/api/team-requests', teamRequestRoutes);
+app.use('/api/thesis-projects', thesisProjectRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/email-test', emailTestRoutes);
+app.use('/api/simple-email-test', simpleEmailTestRoutes);
+app.use('/api/activity', activityRoutes);
 app.use('/api/groups', (req, res, next) => {
   req.io = io;
   next();
@@ -48,25 +64,31 @@ io.on('connection', (socket) => {
   // User authentication and joining
   socket.on('user-connected', async (userData) => {
     try {
-      console.log(`[SERVER] User ${userData.username} connected with socket ${socket.id}`);
+      console.log(`[SERVER] User ${userData.name} connected with socket ${socket.id}`);
+      
+      const userId = userData.userId || userData.id;
       
       // Store user connection info
       connectedUsers.set(socket.id, {
-        userId: userData.userId,
-        username: userData.username,
+        userId: userId,
+        name: userData.name,
         avatar: userData.avatar
       });
 
+      // Join user to their personal notification room
+      socket.join(`user-${userId}`);
+      console.log(`[SERVER] User ${userId} joined personal room: user-${userId}`);
+
       // Update user online status in database
-      await User.findByIdAndUpdate(userData.userId, { 
+      await User.findByIdAndUpdate(userId, { 
         isOnline: true,
         lastSeen: new Date()
       });
 
       // Notify all connected users about this user coming online
       socket.broadcast.emit('user-online', {
-        userId: userData.userId,
-        username: userData.username,
+        userId: userId,
+        name: userData.name,
         avatar: userData.avatar
       });
 
@@ -89,7 +111,7 @@ io.on('connection', (socket) => {
     if (userInfo) {
       groupRooms.get(groupId).add(userInfo.userId);
       
-      console.log(`[SERVER] User ${userInfo.username} (${userInfo.userId}) joined group ${groupId}`);
+      console.log(`[SERVER] User ${userInfo.name} (${userInfo.userId}) joined group ${groupId}`);
       console.log(`[SERVER] Group ${groupId} now has members:`, Array.from(groupRooms.get(groupId)));
       console.log(`[SERVER] Sockets in group-${groupId}:`, socket.adapter.rooms.get(`group-${groupId}`));
       
@@ -137,9 +159,9 @@ io.on('connection', (socket) => {
 
   // Handle new chat messages
   socket.on('new-message', (messageData) => {
-    console.log(`[SERVER] New message in group ${messageData.groupId}`);
-    // Broadcast message to all group members except sender
-    socket.to(`group-${messageData.groupId}`).emit('message-received', messageData);
+  console.log(`[SERVER] New message in group ${messageData.groupId}`);
+  // Broadcast message to all group members including sender
+  io.to(`group-${messageData.groupId}`).emit('message-received', messageData);
   });
 
   // Handle typing indicators

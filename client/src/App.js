@@ -2,9 +2,17 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Navbar from './components/Navbar';
+import LoginPageNew from './pages/LoginPageNew';
+import SignupPage from './pages/SignupPage';
+import LandingPage from './pages/LandingPage';
+import DashboardNew from './pages/DashboardNew';
+import ProjectsPage from './pages/ProjectsPage';
+import TeamsPage from './pages/TeamsPage';
+import MessagesPageNew from './pages/MessagesPageNew';
+import IdeasPage from './pages/IdeasPage';
+import AdminPage from './pages/AdminPage';
+import ProfilePage from './pages/ProfilePage';
+import ActivityPage from './pages/ActivityPage';
 import './index.css';
 
 // Protected Route Component
@@ -14,17 +22,12 @@ const ProtectedRoute = ({ children }) => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
       </div>
     );
   }
   
-  return isAuthenticated ? (
-    <>
-      <Navbar />
-      {children}
-    </>
-  ) : <Navigate to="/login" />;
+  return isAuthenticated ? children : <Navigate to="/" />;
 };
 
 // Public Route Component
@@ -34,7 +37,7 @@ const PublicRoute = ({ children }) => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
       </div>
     );
   }
@@ -52,17 +55,30 @@ function App() {
             toastOptions={{
               duration: 4000,
               style: {
-                background: '#363636',
-                color: '#fff',
+                background: 'hsl(var(--card))',
+                color: 'hsl(var(--card-foreground))',
+                border: '1px solid hsl(var(--border))',
               },
             }}
           />
           <Routes>
             <Route 
+              path="/" 
+              element={<LandingPage />} 
+            />
+            <Route 
               path="/login" 
               element={
                 <PublicRoute>
-                  <Login />
+                  <LoginPageNew />
+                </PublicRoute>
+              } 
+            />
+            <Route 
+              path="/signup" 
+              element={
+                <PublicRoute>
+                  <SignupPage />
                 </PublicRoute>
               } 
             />
@@ -70,11 +86,66 @@ function App() {
               path="/dashboard" 
               element={
                 <ProtectedRoute>
-                  <Dashboard />
+                  <DashboardNew />
                 </ProtectedRoute>
               } 
             />
-            <Route path="/" element={<Navigate to="/dashboard" />} />
+            <Route 
+              path="/projects" 
+              element={
+                <ProtectedRoute>
+                  <ProjectsPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/teams" 
+              element={
+                <ProtectedRoute>
+                  <TeamsPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/messages" 
+              element={
+                <ProtectedRoute>
+                  <MessagesPageNew />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/ideas" 
+              element={
+                <ProtectedRoute>
+                  <IdeasPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/admin" 
+              element={
+                <ProtectedRoute>
+                  <AdminPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/profile" 
+              element={
+                <ProtectedRoute>
+                  <ProfilePage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/activity" 
+              element={
+                <ProtectedRoute>
+                  <ActivityPage />
+                </ProtectedRoute>
+              } 
+            />
           </Routes>
         </div>
       </Router>

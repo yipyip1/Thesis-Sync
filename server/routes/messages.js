@@ -3,6 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const Message = require('../models/Message');
 const Group = require('../models/Group');
+const User = require('../models/User');
 const auth = require('../middleware/auth');
 const router = express.Router();
 
@@ -69,6 +70,26 @@ router.post('/text', auth, async (req, res) => {
     await message.populate('sender', 'username avatar');
     if (replyTo) {
       await message.populate('replyTo');
+    }
+
+    // Log activity for first message in a group to avoid spam
+    const messageCount = await Message.countDocuments({ 
+      group: groupId, 
+      sender: req.userId 
+    });
+    
+    // Only log activity for first message from this user in this group
+    if (messageCount === 1) {
+      const user = await User.findById(req.userId);
+      user.activityLog.push({
+        action: 'message_sent',
+        timestamp: new Date(),
+        details: { 
+          groupId: group._id, 
+          groupName: group.name
+        }
+      });
+      await user.save();
     }
 
     res.status(201).json(message);

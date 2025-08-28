@@ -1,6 +1,7 @@
 const express = require('express');
 const Group = require('../models/Group');
 const Message = require('../models/Message');
+const User = require('../models/User');
 const auth = require('../middleware/auth');
 const router = express.Router();
 
@@ -36,6 +37,15 @@ router.post('/', auth, async (req, res) => {
 
     await group.save();
     await group.populate('members.user', 'username email avatar isOnline');
+
+    // Add to user's activity log
+    const user = await User.findById(req.userId);
+    user.activityLog.push({
+      action: 'group_created',
+      timestamp: new Date(),
+      details: { groupId: group._id, name }
+    });
+    await user.save();
 
     res.status(201).json(group);
   } catch (error) {
@@ -152,6 +162,14 @@ router.post('/:groupId/members/email', auth, async (req, res) => {
     group.members.push({ user: userToAdd._id });
     await group.save();
     await group.populate('members.user', 'username email avatar isOnline');
+
+    // Add to user's activity log
+    userToAdd.activityLog.push({
+      action: 'group_joined',
+      timestamp: new Date(),
+      details: { groupId: group._id, name: group.name }
+    });
+    await userToAdd.save();
 
     console.log('Member added successfully');
 

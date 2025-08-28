@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import axios from 'axios';
 import socketService from '../utils/socketService';
 
 const AuthContext = createContext();
@@ -81,18 +82,36 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  const login = (userData) => {
-    dispatch({
-      type: 'LOGIN_SUCCESS',
-      payload: userData
-    });
-    
-    // Connect to socket
-    socketService.connect(userData.user);
+  const login = async (email, password) => {
+    try {
+      const response = await axios.post('http://localhost:5000/api/auth/login', {
+        email,
+        password
+      });
+      
+      if (response.data.success) {
+        dispatch({
+          type: 'LOGIN_SUCCESS',
+          payload: {
+            token: response.data.token,
+            user: response.data.user
+          }
+        });
+        
+        // Connect to socket
+        socketService.connect(response.data.user);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      dispatch({ type: 'AUTH_ERROR', payload: error.response?.data?.message || 'Login failed' });
+      throw error;
+    }
   };
 
   const logout = () => {
     dispatch({ type: 'LOGOUT' });
+    dispatch({ type: 'SET_LOADING', payload: false });
   };
 
   const value = {
@@ -115,3 +134,5 @@ export const useAuth = () => {
   }
   return context;
 };
+
+export { AuthContext };

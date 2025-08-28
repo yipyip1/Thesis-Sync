@@ -3,7 +3,7 @@ import { XMarkIcon, UserPlusIcon, UsersIcon } from '@heroicons/react/24/outline'
 import { authAPI, groupAPI } from '../utils/api';
 import toast from 'react-hot-toast';
 
-const AddMemberModal = ({ group, onClose, onMemberAdded }) => {
+const AddMemberModal = ({ group, currentUser, onClose, onMemberAdded }) => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -15,7 +15,7 @@ const AddMemberModal = ({ group, onClose, onMemberAdded }) => {
     try {
       console.log('Attempting to add member with email:', email);
       console.log('Group ID:', group._id);
-      console.log('Current user ID:', group.currentUserId);
+      console.log('Current user ID:', currentUser?.userId || currentUser?.id || currentUser?._id);
       
       await groupAPI.addMemberByEmail(group._id, email.trim());
       toast.success('Member added successfully!');
@@ -30,8 +30,9 @@ const AddMemberModal = ({ group, onClose, onMemberAdded }) => {
     }
   };
 
+  const currentUserId = currentUser?.userId || currentUser?.id || currentUser?._id;
   const isAdmin = group.members.some(
-    member => member.role === 'admin' && member.user._id === group.currentUserId
+    member => member.role === 'admin' && (member.user._id === currentUserId || member.user.id === currentUserId)
   );
 
   if (!isAdmin) {
@@ -82,11 +83,11 @@ const AddMemberModal = ({ group, onClose, onMemberAdded }) => {
                 <div key={member.user._id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                   <div className="flex items-center space-x-2">
                     <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">
-                      {member.user.username.charAt(0).toUpperCase()}
+                      {(member.user.name || member.user.username || member.user.email || 'U').charAt(0).toUpperCase()}
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-800">{member.user.username}</p>
-                      <p className="text-xs text-gray-500">{member.user.email}</p>
+                      <p className="text-sm font-medium text-gray-800">{member.user.name || member.user.username || 'Unknown'}</p>
+                      <p className="text-xs text-gray-500">{member.user.email || 'No email'}</p>
                     </div>
                   </div>
                   {member.role === 'admin' && (
