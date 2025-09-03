@@ -17,14 +17,14 @@ import {
   Trash2,
   Clock,
   Target,
-  FileText,
-  Upload,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  X
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { thesisProjectAPI, userAPI } from '../utils/api';
+import { thesisProjectAPI, userAPI, thesisApplicationAPI, groupAPI } from '../utils/api';
 import Navigation from '../components/Navigation';
+import KanbanBoard from '../components/KanbanBoard';
 import toast from 'react-hot-toast';
 
 export default function ProjectsPage() {
@@ -40,10 +40,17 @@ export default function ProjectsPage() {
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
-  const [showPhaseModal, setShowPhaseModal] = useState(false);
-  const [showDocumentModal, setShowDocumentModal] = useState(false);
+  const [showKanbanModal, setShowKanbanModal] = useState(false);
   const [selectedProject, setSelectedProject] = useState(null);
-  const [selectedPhase, setSelectedPhase] = useState(null);
+  
+  // Kanban states
+  const [projectTasks, setProjectTasks] = useState([]);
+  const [projectMembers, setProjectMembers] = useState([]);
+  const [projectsWithTaskProgress, setProjectsWithTaskProgress] = useState([]);
+  
+  // Status editing state
+  const [isEditingStatus, setIsEditingStatus] = useState(false);
+  const [newStatus, setNewStatus] = useState('');
   
   // Form states
   const [createForm, setCreateForm] = useState({
@@ -57,26 +64,31 @@ export default function ProjectsPage() {
     coSupervisors: []
   });
   
-  const [phaseForm, setPhaseForm] = useState({
-    status: '',
-    progress: 0,
-    startDate: '',
-    endDate: '',
-    deadline: ''
-  });
-  
-  const [documentForm, setDocumentForm] = useState({
-    name: '',
-    type: 'other'
-  });
-  
-  const [documentFile, setDocumentFile] = useState(null);
   const [supervisors, setSupervisors] = useState([]);
   const [students, setStudents] = useState([]);
+  
+  // Application states
+  const [userTeams, setUserTeams] = useState([]);
+  const [showApplyModal, setShowApplyModal] = useState(false);
+  const [selectedProjectForApplication, setSelectedProjectForApplication] = useState(null);
+  const [applicationForm, setApplicationForm] = useState({
+    teamId: '',
+    message: ''
+  });
+  const [userApplications, setUserApplications] = useState([]);
+  const [projectApplications, setProjectApplications] = useState([]);
+  const [showApplicationsModal, setShowApplicationsModal] = useState(false);
+  const [selectedProjectForApplications, setSelectedProjectForApplications] = useState(null);
 
   const categories = ['AI', 'ML', 'Blockchain', 'Cybersecurity', 'IoT', 'Web Development', 'Mobile Development', 'Data Science', 'Other'];
   const statuses = ['proposal', 'approved', 'in_progress', 'review', 'defense_scheduled', 'completed', 'cancelled'];
-  const documentTypes = ['proposal', 'chapter', 'presentation', 'code', 'data', 'reference', 'other'];
+
+  useEffect(() => {
+    // Set default tab based on user role
+    if (user?.role === 'student') {
+      setActiveTab('all-projects');
+    }
+  }, [user]);
 
   useEffect(() => {
     fetchMyProjects();
@@ -84,12 +96,44 @@ export default function ProjectsPage() {
     if (user?.role === 'supervisor' || user?.role === 'admin') {
       fetchUsers();
     }
-  }, [searchTerm, filterStatus, filterCategory]);
+    if (user?.role === 'student') {
+      fetchUserTeams();
+      fetchUserApplications();
+    }
+  }, [searchTerm, filterStatus, filterCategory, user]);
 
   const fetchMyProjects = async () => {
     try {
       const response = await thesisProjectAPI.getMyProjects();
-      setMyProjects(response.data.projects || []);
+      const projects = response.data.projects || [];
+      
+      // Calculate task-based progress for each project
+      const projectsWithProgress = await Promise.all(
+        projects.map(async (project) => {
+          try {
+            const tasksResponse = await thesisProjectAPI.getTasks(project._id);
+            const tasks = tasksResponse.data.tasks || [];
+            const taskBasedProgress = calculateTaskBasedProgress(tasks);
+            
+            return {
+              ...project,
+              taskBasedProgress,
+              originalProgress: project.overallProgress,
+              overallProgress: taskBasedProgress
+            };
+          } catch (error) {
+            console.error(`Failed to fetch tasks for project ${project._id}:`, error);
+            return {
+              ...project,
+              taskBasedProgress: 0,
+              originalProgress: project.overallProgress,
+              overallProgress: project.overallProgress || 0
+            };
+          }
+        })
+      );
+      
+      setMyProjects(projectsWithProgress);
     } catch (error) {
       console.error('Fetch my projects error:', error);
     }
@@ -97,17 +141,56 @@ export default function ProjectsPage() {
 
   const fetchAllProjects = async () => {
     try {
+      console.log('=== FRONTEND: Fetching all projects ===');
+      console.log('User:', user);
+      console.log('Search term:', searchTerm);
+      console.log('Filter status:', filterStatus);
+      console.log('Filter category:', filterCategory);
+      
       setLoading(true);
       const params = {};
       if (searchTerm) params.search = searchTerm;
       if (filterStatus !== 'all') params.status = filterStatus;
       if (filterCategory !== 'all') params.category = filterCategory;
       
+      console.log('API params:', params);
+      
       const response = await thesisProjectAPI.getProjects(params);
-      setProjects(response.data.projects || []);
+      console.log('API response:', response.data);
+      
+      const projects = response.data.projects || [];
+      
+      // Calculate task-based progress for each project
+      const projectsWithProgress = await Promise.all(
+        projects.map(async (project) => {
+          try {
+            const tasksResponse = await thesisProjectAPI.getTasks(project._id);
+            const tasks = tasksResponse.data.tasks || [];
+            const taskBasedProgress = calculateTaskBasedProgress(tasks);
+            
+            return {
+              ...project,
+              taskBasedProgress,
+              originalProgress: project.overallProgress,
+              overallProgress: taskBasedProgress
+            };
+          } catch (error) {
+            console.error(`Failed to fetch tasks for project ${project._id}:`, error);
+            return {
+              ...project,
+              taskBasedProgress: 0,
+              originalProgress: project.overallProgress,
+              overallProgress: project.overallProgress || 0
+            };
+          }
+        })
+      );
+      
+      setProjects(projectsWithProgress);
+      console.log('Projects set to state with task progress:', projectsWithProgress.length);
     } catch (error) {
-      toast.error('Failed to fetch projects');
       console.error('Fetch projects error:', error);
+      toast.error('Failed to fetch projects');
     } finally {
       setLoading(false);
     }
@@ -124,13 +207,124 @@ export default function ProjectsPage() {
     }
   };
 
+  const fetchUserTeams = async () => {
+    try {
+      if (user?.role === 'student') {
+        const response = await groupAPI.getGroups();
+        // Filter teams where user is admin (leader) and has at least 2 members
+        const leaderTeams = response.data.filter(team => {
+          const userMembership = team.members.find(member => 
+            member.user._id === user.id
+          );
+          return userMembership && userMembership.role === 'admin' && team.members.length >= 2;
+        });
+        setUserTeams(leaderTeams);
+      }
+    } catch (error) {
+      console.error('Fetch user teams error:', error);
+    }
+  };
+
+  const fetchUserApplications = async () => {
+    try {
+      if (user?.role === 'student') {
+        console.log('=== FRONTEND: Fetching user applications ===');
+        const response = await thesisApplicationAPI.getMyApplications();
+        console.log('User applications response:', response.data);
+        setUserApplications(response.data.applications || []);
+        console.log('User applications set to state:', response.data.applications?.length || 0);
+      }
+    } catch (error) {
+      console.error('Fetch user applications error:', error);
+      setUserApplications([]); // Set to empty array on error
+    }
+  };
+
+  const fetchProjectApplications = async (projectId) => {
+    try {
+      console.log('=== FRONTEND: Fetching project applications ===');
+      console.log('Project ID:', projectId);
+      console.log('User:', user);
+      
+      if (user?.role === 'supervisor' || user?.role === 'admin') {
+        const response = await thesisApplicationAPI.getProjectApplications(projectId);
+        console.log('API response:', response.data);
+        setProjectApplications(response.data.applications || []);
+        console.log('Applications set to state:', response.data.applications?.length || 0);
+      }
+    } catch (error) {
+      console.error('Fetch project applications error:', error);
+    }
+  };
+
+  const handleApplyForProject = async (e) => {
+    e.preventDefault();
+    try {
+      if (!applicationForm.teamId) {
+        toast.error('Please select a team');
+        return;
+      }
+
+      await thesisApplicationAPI.applyForProject({
+        projectId: selectedProjectForApplication._id,
+        teamId: applicationForm.teamId,
+        message: applicationForm.message
+      });
+
+      toast.success('Application submitted successfully');
+      setShowApplyModal(false);
+      setApplicationForm({ teamId: '', message: '' });
+      setSelectedProjectForApplication(null);
+      fetchUserApplications();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to submit application');
+      console.error('Apply for project error:', error);
+    }
+  };
+
+  const handleApplicationResponse = async (applicationId, status, reviewMessage = '') => {
+    try {
+      await thesisApplicationAPI.updateApplication(applicationId, { status, reviewMessage });
+      toast.success(`Application ${status} successfully`);
+      
+      // Refresh applications in the dedicated applications modal
+      if (selectedProjectForApplications) {
+        fetchProjectApplications(selectedProjectForApplications._id);
+      }
+      
+      fetchAllProjects(); // Refresh projects to show updated status
+    } catch (error) {
+      toast.error('Failed to update application');
+      console.error('Update application error:', error);
+    }
+  };
+
+  const canApplyForProject = (project) => {
+    if (user?.role !== 'student') return false;
+    if (!project?.isPublic) return false;
+    if (project?.students?.length > 0) return false; // Already has students
+    
+    // Check if user already applied - add defensive checks
+    try {
+      const hasApplied = Array.isArray(userApplications) && userApplications.some(app => 
+        app && app.project && app.project._id === project._id && app.status === 'pending'
+      );
+      
+      return !hasApplied && Array.isArray(userTeams) && userTeams.length > 0;
+    } catch (error) {
+      console.error('Error in canApplyForProject:', error);
+      return false;
+    }
+  };
+
   const handleCreateProject = async (e) => {
     e.preventDefault();
     try {
       setLoading(true);
       const projectData = {
         ...createForm,
-        tags: createForm.tags.split(',').map(t => t.trim()).filter(Boolean)
+        tags: createForm.tags.split(',').map(t => t.trim()).filter(Boolean),
+        isPublic: true  // Make projects public so students can apply
       };
       
       await thesisProjectAPI.createProject(projectData);
@@ -147,51 +341,168 @@ export default function ProjectsPage() {
     }
   };
 
-  const handleUpdatePhase = async () => {
-    try {
-      await thesisProjectAPI.updatePhase(selectedProject._id, selectedPhase._id, phaseForm);
-      toast.success('Phase updated successfully');
-      setShowPhaseModal(false);
-      fetchProjectDetails(selectedProject._id);
-    } catch (error) {
-      toast.error('Failed to update phase');
-      console.error('Update phase error:', error);
-    }
-  };
-
-  const handleUploadDocument = async (e) => {
-    e.preventDefault();
-    if (!documentFile) {
-      toast.error('Please select a file');
+  const handleDeleteProject = async (projectId, projectTitle) => {
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete "${projectTitle}"?\n\nThis action cannot be undone and will permanently remove the project and all associated data.`
+    );
+    
+    if (!confirmDelete) {
       return;
     }
 
     try {
-      const formData = new FormData();
-      formData.append('document', documentFile);
-      formData.append('name', documentForm.name);
-      formData.append('type', documentForm.type);
+      await thesisProjectAPI.deleteProject(projectId);
+      toast.success('Project deleted successfully');
       
-      await thesisProjectAPI.uploadDocument(selectedProject._id, formData);
-      toast.success('Document uploaded successfully');
-      setShowDocumentModal(false);
-      setDocumentForm({ name: '', type: 'other' });
-      setDocumentFile(null);
-      fetchProjectDetails(selectedProject._id);
+      // Refresh the projects list
+      fetchMyProjects();
+      fetchAllProjects();
+      
+      // If the deleted project was being viewed in the details modal, close it
+      if (selectedProject && selectedProject._id === projectId) {
+        setShowDetailsModal(false);
+        setSelectedProject(null);
+      }
     } catch (error) {
-      toast.error('Failed to upload document');
-      console.error('Upload document error:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to delete project';
+      toast.error(errorMessage);
+      console.error('Delete project error:', error);
     }
   };
 
   const fetchProjectDetails = async (projectId) => {
     try {
       const response = await thesisProjectAPI.getProject(projectId);
-      setSelectedProject(response.data.project);
+      const project = response.data.project;
+      
+      // Calculate task-based progress for the selected project
+      try {
+        const tasksResponse = await thesisProjectAPI.getTasks(projectId);
+        const tasks = tasksResponse.data.tasks || [];
+        const taskBasedProgress = calculateTaskBasedProgress(tasks);
+        
+        const projectWithProgress = {
+          ...project,
+          taskBasedProgress,
+          originalProgress: project.overallProgress,
+          overallProgress: taskBasedProgress
+        };
+        
+        setSelectedProject(projectWithProgress);
+      } catch (taskError) {
+        console.error(`Failed to fetch tasks for project ${projectId}:`, taskError);
+        // Fallback to original progress if task fetching fails
+        setSelectedProject({
+          ...project,
+          taskBasedProgress: 0,
+          originalProgress: project.overallProgress,
+          overallProgress: project.overallProgress || 0
+        });
+      }
     } catch (error) {
       toast.error('Failed to fetch project details');
       console.error('Fetch project details error:', error);
     }
+  };
+
+  // Kanban Management Functions
+  const handleOpenKanban = async (project) => {
+    setSelectedProject(project);
+    try {
+      // Fetch project tasks
+      const tasksResponse = await thesisProjectAPI.getTasks(project._id);
+      setProjectTasks(tasksResponse.data.tasks || []);
+      
+      // Prepare project members (supervisor + students + co-supervisors)
+      const members = [
+        project.supervisor,
+        ...project.students,
+        ...(project.coSupervisors || [])
+      ].filter(Boolean);
+      setProjectMembers(members);
+      
+      setShowKanbanModal(true);
+    } catch (error) {
+      toast.error('Failed to load project tasks');
+      console.error('Kanban load error:', error);
+    }
+  };
+
+  const handleTasksUpdate = async (updatedTasks) => {
+    try {
+      await thesisProjectAPI.updateTasks(selectedProject._id, updatedTasks);
+      setProjectTasks(updatedTasks);
+      
+      // Recalculate progress and update the selected project
+      const newProgress = calculateTaskBasedProgress(updatedTasks);
+      const updatedProject = {
+        ...selectedProject,
+        taskBasedProgress: newProgress,
+        overallProgress: newProgress
+      };
+      setSelectedProject(updatedProject);
+      
+      // Update the project in both lists
+      setMyProjects(prev => prev.map(p => 
+        p._id === selectedProject._id ? updatedProject : p
+      ));
+      setProjects(prev => prev.map(p => 
+        p._id === selectedProject._id ? updatedProject : p
+      ));
+      
+    } catch (error) {
+      toast.error('Failed to update tasks');
+      console.error('Tasks update error:', error);
+    }
+  };
+
+  // Calculate progress based on Kanban tasks
+  const calculateTaskBasedProgress = (tasks) => {
+    if (!tasks || tasks.length === 0) return 0;
+    
+    const inProgressTasks = tasks.filter(task => task.status === 'in_progress').length;
+    const doneTasks = tasks.filter(task => task.status === 'done').length;
+    const totalTasks = tasks.length;
+    
+    // Ideas don't count, in_progress = 50% contribution, done = 100% contribution
+    const weightedProgress = (inProgressTasks * 0.5) + (doneTasks * 1);
+    const percentage = Math.round((weightedProgress / totalTasks) * 100);
+    
+    return percentage;
+  };
+
+  // Update project status
+  const handleStatusUpdate = async () => {
+    try {
+      await thesisProjectAPI.updateProject(selectedProject._id, { status: newStatus });
+      
+      const updatedProject = { ...selectedProject, status: newStatus };
+      setSelectedProject(updatedProject);
+      
+      // Update the project in both lists
+      setMyProjects(prev => prev.map(p => 
+        p._id === selectedProject._id ? { ...p, status: newStatus } : p
+      ));
+      setProjects(prev => prev.map(p => 
+        p._id === selectedProject._id ? { ...p, status: newStatus } : p
+      ));
+      
+      setIsEditingStatus(false);
+      toast.success('Project status updated successfully');
+    } catch (error) {
+      toast.error('Failed to update project status');
+      console.error('Status update error:', error);
+    }
+  };
+
+  const handleStatusEdit = () => {
+    setNewStatus(selectedProject.status || 'proposal');
+    setIsEditingStatus(true);
+  };
+
+  const handleStatusCancel = () => {
+    setIsEditingStatus(false);
+    setNewStatus('');
   };
 
   const resetCreateForm = () => {
@@ -208,20 +519,34 @@ export default function ProjectsPage() {
   };
 
   const canManageProject = (project) => {
-    return user?.role === 'admin' ||
-           project.supervisor._id === user._id ||
-           (project.coSupervisors && project.coSupervisors.some(cs => cs._id === user._id));
+    console.log('=== CAN MANAGE PROJECT DEBUG ===');
+    console.log('Project:', project);
+    console.log('User:', user);
+    console.log('Project supervisor:', project.supervisor);
+    console.log('User role:', user?.role);
+    console.log('User ID:', user?.id);
+    console.log('Supervisor ID:', project.supervisor?._id);
+    console.log('Are they equal?', project.supervisor?._id === user?.id);
+    
+    const result = user?.role === 'admin' ||
+           project.supervisor?._id === user?.id ||
+           (project.coSupervisors && project.coSupervisors.some(cs => cs?._id === user?.id));
+    
+    console.log('Final result:', result);
+    console.log('=================================');
+    
+    return result;
   };
 
   const getStatusColor = (status) => {
     const colors = {
-      proposal: 'secondary',
-      approved: 'default',
-      in_progress: 'default',
-      review: 'secondary',
-      defense_scheduled: 'default',
-      completed: 'default',
-      cancelled: 'destructive'
+      proposal: 'outline',           // Gray outline for proposal stage
+      approved: 'secondary',         // Light blue for approved
+      in_progress: 'default',        // Blue for in progress  
+      review: 'outline',             // Gray outline for review
+      defense_scheduled: 'default',  // Blue for defense scheduled
+      completed: 'default',          // Green-ish for completed
+      cancelled: 'destructive'       // Red for cancelled
     };
     return colors[status] || 'secondary';
   };
@@ -304,6 +629,18 @@ export default function ProjectsPage() {
 
         {/* Projects Grid */}
         <div className="space-y-4">
+          {(() => {
+            const currentProjects = activeTab === 'my-projects' ? myProjects : projects;
+            console.log('=== FRONTEND: Rendering projects ===');
+            console.log('Active tab:', activeTab);
+            console.log('User role:', user?.role);
+            console.log('My projects count:', myProjects.length);
+            console.log('All projects count:', projects.length);
+            console.log('Current projects to display:', currentProjects.length);
+            console.log('Loading:', loading);
+            return null;
+          })()}
+          
           {loading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -333,9 +670,54 @@ export default function ProjectsPage() {
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
+                      
+                      {/* Apply button for students */}
+                      {canApplyForProject(project) && (
+                        <Button
+                          size="sm"
+                          variant="default"
+                          onClick={() => {
+                            setSelectedProjectForApplication(project);
+                            setShowApplyModal(true);
+                          }}
+                          className="bg-primary text-primary-foreground"
+                        >
+                          Apply
+                        </Button>
+                      )}
+                      
+                      {/* Management buttons for supervisors/admins */}
                       {canManageProject(project) && (
-                        <Button size="sm" variant="outline">
-                          <Edit className="h-4 w-4" />
+                        <>
+                          <Button size="sm" variant="outline">
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleDeleteProject(project._id, project.title)}
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                      
+                      {/* Applications button for supervisors */}
+                      {(user?.role === 'supervisor' || user?.role === 'admin') && 
+                       (project.supervisor._id === user.id || user.role === 'admin') && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            console.log('Applications button clicked for project:', project.title);
+                            console.log('Setting selected project for applications and fetching...');
+                            setSelectedProjectForApplications(project);
+                            setShowApplicationsModal(true);
+                            fetchProjectApplications(project._id);
+                          }}
+                        >
+                          Applications
                         </Button>
                       )}
                     </div>
@@ -518,22 +900,48 @@ export default function ProjectsPage() {
             <div className="flex justify-between items-start mb-6">
               <div>
                 <h3 className="text-xl font-semibold">{selectedProject.title}</h3>
-                <Badge variant={getStatusColor(selectedProject.status)} className="mt-2">
-                  {selectedProject.status.replace('_', ' ')}
-                </Badge>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-sm text-muted-foreground">Status:</span>
+                  {isEditingStatus ? (
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={newStatus}
+                        onChange={(e) => setNewStatus(e.target.value)}
+                        className="text-sm border border-input rounded-md px-2 py-1 bg-background"
+                      >
+                        <option value="proposal">Proposal</option>
+                        <option value="approved">Approved</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="review">Review</option>
+                        <option value="defense_scheduled">Defense Scheduled</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                      <Button size="sm" onClick={handleStatusUpdate} className="h-6 px-2">
+                        Save
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={handleStatusCancel} className="h-6 px-2">
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Badge variant={getStatusColor(selectedProject.status || 'proposal')} className="text-sm">
+                        {selectedProject.status ? 
+                          selectedProject.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : 
+                          'Proposal'
+                        }
+                      </Badge>
+                      {canManageProject(selectedProject) && (
+                        <Button size="sm" variant="ghost" onClick={handleStatusEdit} className="h-6 w-6 p-0">
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex gap-2">
-                {canManageProject(selectedProject) && (
-                  <>
-                    <Button
-                      size="sm"
-                      onClick={() => setShowDocumentModal(true)}
-                    >
-                      <Upload className="h-4 w-4 mr-2" />
-                      Upload Document
-                    </Button>
-                  </>
-                )}
                 <Button
                   size="sm"
                   variant="outline"
@@ -602,222 +1010,235 @@ export default function ProjectsPage() {
                 </Card>
               </div>
 
-              {/* Phases */}
+              {/* Project Progress */}
               <div className="space-y-4">
                 <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Project Phases</CardTitle>
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <CardTitle className="text-base">Project Progress</CardTitle>
+                    <Button
+                      size="sm"
+                      onClick={() => handleOpenKanban(selectedProject)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      View Progress
+                    </Button>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-3">
-                      {selectedProject.phases.map((phase, index) => (
-                        <div key={phase._id} className="border rounded-lg p-3">
-                          <div className="flex justify-between items-start mb-2">
-                            <div>
-                              <p className="font-medium text-sm">{phase.name}</p>
-                              <p className="text-xs text-muted-foreground">{phase.description}</p>
-                            </div>
-                            {canManageProject(selectedProject) && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                  setSelectedPhase(phase);
-                                  setPhaseForm({
-                                    status: phase.status,
-                                    progress: phase.progress,
-                                    startDate: phase.startDate ? new Date(phase.startDate).toISOString().split('T')[0] : '',
-                                    endDate: phase.endDate ? new Date(phase.endDate).toISOString().split('T')[0] : '',
-                                    deadline: phase.deadline ? new Date(phase.deadline).toISOString().split('T')[0] : ''
-                                  });
-                                  setShowPhaseModal(true);
-                                }}
-                              >
-                                <Edit className="h-3 w-3" />
-                              </Button>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge 
-                              variant={phase.status === 'completed' ? 'default' : phase.status === 'in_progress' ? 'secondary' : 'outline'}
-                              className="text-xs"
-                            >
-                              {phase.status.replace('_', ' ')}
-                            </Badge>
-                            <div className="flex-1">
-                              <Progress value={phase.progress} className="h-1" />
-                            </div>
-                            <span className="text-xs text-muted-foreground">{phase.progress}%</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Track project tasks and milestones using our Kanban board system. 
+                      Click "View Progress" to manage tasks and monitor project status.
+                    </p>
                   </CardContent>
                 </Card>
-
-                {/* Documents */}
-                {selectedProject.documents && selectedProject.documents.length > 0 && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Documents</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-2">
-                        {selectedProject.documents.map((doc, index) => (
-                          <div key={index} className="flex items-center justify-between p-2 border rounded">
-                            <div className="flex items-center gap-2">
-                              <FileText className="h-4 w-4 text-muted-foreground" />
-                              <div>
-                                <p className="text-sm font-medium">{doc.name}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {doc.type} • {new Date(doc.uploadDate).toLocaleDateString()}
-                                </p>
-                              </div>
-                            </div>
-                            <Button size="sm" variant="ghost">
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Phase Update Modal */}
-      {showPhaseModal && selectedPhase && (
+      {/* Kanban Modal */}
+      {showKanbanModal && selectedProject && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-lg w-full max-w-7xl h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h2 className="text-xl font-semibold">
+                Project Progress - {selectedProject.title}
+              </h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowKanbanModal(false)}
+                className="hover:bg-gray-100"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <KanbanBoard
+                tasks={projectTasks}
+                onTasksUpdate={handleTasksUpdate}
+                projectMembers={projectMembers}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Apply for Project Modal */}
+      {showApplyModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-background rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-semibold mb-4">Update Phase: {selectedPhase.name}</h3>
-            <div className="space-y-4">
+            <div className="flex justify-between items-center mb-4">
               <div>
-                <Label htmlFor="phaseStatus">Status</Label>
+                <h3 className="text-lg font-semibold">Apply for Project</h3>
+                <p className="text-sm text-muted-foreground">
+                  {selectedProjectForApplication?.title}
+                </p>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => {
+                  setShowApplyModal(false);
+                  setApplicationForm({ teamId: '', message: '' });
+                  setSelectedProjectForApplication(null);
+                }}
+              >
+                ×
+              </Button>
+            </div>
+            <form onSubmit={handleApplyForProject} className="space-y-4">
+              <div>
+                <Label htmlFor="teamSelect">Select Team</Label>
                 <select
-                  id="phaseStatus"
-                  value={phaseForm.status}
-                  onChange={(e) => setPhaseForm(prev => ({ ...prev, status: e.target.value }))}
-                  className="w-full p-2 border border-input rounded-md bg-background"
-                >
-                  <option value="not_started">Not Started</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="completed">Completed</option>
-                  <option value="overdue">Overdue</option>
-                </select>
-              </div>
-              <div>
-                <Label htmlFor="phaseProgress">Progress (%)</Label>
-                <Input
-                  id="phaseProgress"
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={phaseForm.progress}
-                  onChange={(e) => setPhaseForm(prev => ({ ...prev, progress: parseInt(e.target.value) || 0 }))}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label htmlFor="startDate">Start Date</Label>
-                  <Input
-                    id="startDate"
-                    type="date"
-                    value={phaseForm.startDate}
-                    onChange={(e) => setPhaseForm(prev => ({ ...prev, startDate: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="deadline">Deadline</Label>
-                  <Input
-                    id="deadline"
-                    type="date"
-                    value={phaseForm.deadline}
-                    onChange={(e) => setPhaseForm(prev => ({ ...prev, deadline: e.target.value }))}
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => setShowPhaseModal(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={handleUpdatePhase}
-                >
-                  Update Phase
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Document Upload Modal */}
-      {showDocumentModal && selectedProject && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-background rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-semibold mb-4">Upload Document</h3>
-            <form onSubmit={handleUploadDocument} className="space-y-4">
-              <div>
-                <Label htmlFor="documentName">Document Name</Label>
-                <Input
-                  id="documentName"
-                  value={documentForm.name}
-                  onChange={(e) => setDocumentForm(prev => ({ ...prev, name: e.target.value }))}
+                  id="teamSelect"
+                  value={applicationForm.teamId}
+                  onChange={(e) => setApplicationForm(prev => ({ ...prev, teamId: e.target.value }))}
+                  className="w-full p-2 border border-border rounded-md bg-background"
                   required
-                />
-              </div>
-              <div>
-                <Label htmlFor="documentType">Document Type</Label>
-                <select
-                  id="documentType"
-                  value={documentForm.type}
-                  onChange={(e) => setDocumentForm(prev => ({ ...prev, type: e.target.value }))}
-                  className="w-full p-2 border border-input rounded-md bg-background"
                 >
-                  {documentTypes.map(type => (
-                    <option key={type} value={type}>
-                      {type.charAt(0).toUpperCase() + type.slice(1)}
+                  <option value="">Choose a team...</option>
+                  {userTeams.map((team) => (
+                    <option key={team._id} value={team._id}>
+                      {team.name} ({team.members.length} members)
                     </option>
                   ))}
                 </select>
               </div>
               <div>
-                <Label htmlFor="documentFile">Choose File</Label>
-                <input
-                  id="documentFile"
-                  type="file"
-                  onChange={(e) => setDocumentFile(e.target.files[0])}
-                  className="w-full p-2 border border-input rounded-md bg-background"
-                  required
+                <Label htmlFor="applicationMessage">Message (Optional)</Label>
+                <textarea
+                  id="applicationMessage"
+                  value={applicationForm.message}
+                  onChange={(e) => setApplicationForm(prev => ({ ...prev, message: e.target.value }))}
+                  placeholder="Tell the supervisor why your team is a good fit for this project..."
+                  className="w-full p-2 border border-border rounded-md bg-background h-24 resize-none"
                 />
               </div>
               <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
+                <Button 
+                  type="button" 
+                  variant="outline" 
                   className="flex-1"
                   onClick={() => {
-                    setShowDocumentModal(false);
-                    setDocumentForm({ name: '', type: 'other' });
-                    setDocumentFile(null);
+                    setShowApplyModal(false);
+                    setApplicationForm({ teamId: '', message: '' });
+                    setSelectedProjectForApplication(null);
                   }}
                 >
                   Cancel
                 </Button>
                 <Button type="submit" className="flex-1">
-                  Upload
+                  Submit Application
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Project Applications Modal for Supervisors */}
+      {showApplicationsModal && selectedProjectForApplications && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="text-lg font-semibold">Project Applications</h3>
+                <p className="text-sm text-muted-foreground">
+                  {selectedProjectForApplications.title}
+                </p>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => {
+                  setShowApplicationsModal(false);
+                  setSelectedProjectForApplications(null);
+                  setProjectApplications([]);
+                }}
+              >
+                ×
+              </Button>
+            </div>
+            
+            {projectApplications.length === 0 ? (
+              <div className="text-center py-8">
+                <Users className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                <h3 className="text-lg font-medium mb-2">No Applications Yet</h3>
+                <p className="text-muted-foreground">
+                  No teams have applied for this project yet.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {projectApplications.map((application) => (
+                  <Card key={application._id}>
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <h4 className="font-medium">{application.team.name}</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Applied by {application.applicant.name} • {new Date(application.appliedAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <Badge variant={
+                          application.status === 'accepted' ? 'default' :
+                          application.status === 'rejected' ? 'destructive' :
+                          'secondary'
+                        }>
+                          {application.status}
+                        </Badge>
+                      </div>
+                      
+                      {application.message && (
+                        <div className="mb-4">
+                          <p className="text-sm font-medium mb-1">Message:</p>
+                          <p className="text-sm text-muted-foreground">{application.message}</p>
+                        </div>
+                      )}
+                      
+                      <div className="mb-4">
+                        <p className="text-sm font-medium mb-2">Team Members:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {application.team.members.map((member) => (
+                            <Badge key={member.user._id} variant="outline" className="text-xs">
+                              {member.user.name} {member.role === 'admin' && '(Leader)'}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {application.status === 'pending' && (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleApplicationResponse(application._id, 'accepted')}
+                          >
+                            Accept
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleApplicationResponse(application._id, 'rejected')}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      )}
+                      
+                      {application.reviewMessage && (
+                        <div className="mt-4 p-3 bg-muted rounded-md">
+                          <p className="text-sm font-medium">Review:</p>
+                          <p className="text-sm">{application.reviewMessage}</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

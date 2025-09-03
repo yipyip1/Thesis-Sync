@@ -20,11 +20,13 @@ import {
   FileText,
   Upload,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  X
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { thesisProjectAPI, userAPI } from '../utils/api';
 import Navigation from '../components/Navigation';
+import KanbanBoard from '../components/KanbanBoard';
 import toast from 'react-hot-toast';
 
 export default function ProjectsPage() {
@@ -40,10 +42,18 @@ export default function ProjectsPage() {
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
-  const [showPhaseModal, setShowPhaseModal] = useState(false);
   const [showDocumentModal, setShowDocumentModal] = useState(false);
+  const [showKanbanModal, setShowKanbanModal] = useState(false);
+  const [showStatusModal, setShowStatusModal] = useState(false);
   const [selectedProject, setSelectedProject] = useState(null);
-  const [selectedPhase, setSelectedPhase] = useState(null);
+  
+  // Kanban and Status states
+  const [projectTasks, setProjectTasks] = useState([]);
+  const [projectMembers, setProjectMembers] = useState([]);
+  const [statusForm, setStatusForm] = useState({
+    status: '',
+    notes: ''
+  });
   
   // Form states
   const [createForm, setCreateForm] = useState({
@@ -55,14 +65,6 @@ export default function ProjectsPage() {
     students: [],
     supervisor: '',
     coSupervisors: []
-  });
-  
-  const [phaseForm, setPhaseForm] = useState({
-    status: '',
-    progress: 0,
-    startDate: '',
-    endDate: '',
-    deadline: ''
   });
   
   const [documentForm, setDocumentForm] = useState({
@@ -147,18 +149,6 @@ export default function ProjectsPage() {
     }
   };
 
-  const handleUpdatePhase = async () => {
-    try {
-      await thesisProjectAPI.updatePhase(selectedProject._id, selectedPhase._id, phaseForm);
-      toast.success('Phase updated successfully');
-      setShowPhaseModal(false);
-      fetchProjectDetails(selectedProject._id);
-    } catch (error) {
-      toast.error('Failed to update phase');
-      console.error('Update phase error:', error);
-    }
-  };
-
   const handleUploadDocument = async (e) => {
     e.preventDefault();
     if (!documentFile) {
@@ -188,6 +178,24 @@ export default function ProjectsPage() {
     try {
       const response = await thesisProjectAPI.getProject(projectId);
       setSelectedProject(response.data.project);
+      
+      // Also fetch tasks for the project
+      try {
+        const tasksResponse = await thesisProjectAPI.getTasks(projectId);
+        setProjectTasks(tasksResponse.data.tasks || []);
+        
+        // Prepare project members
+        const project = response.data.project;
+        const members = [
+          project.supervisor,
+          ...project.students,
+          ...(project.coSupervisors || [])
+        ].filter(Boolean);
+        setProjectMembers(members);
+      } catch (taskError) {
+        console.log('No tasks found for project, setting empty array');
+        setProjectTasks([]);
+      }
     } catch (error) {
       toast.error('Failed to fetch project details');
       console.error('Fetch project details error:', error);
@@ -230,6 +238,72 @@ export default function ProjectsPage() {
     if (progress < 30) return 'bg-red-500';
     if (progress < 70) return 'bg-yellow-500';
     return 'bg-green-500';
+  };
+
+  // Kanban and Status Management Functions
+  const handleOpenKanban = async (project) => {
+    setSelectedProject(project);
+    try {
+      // Fetch project tasks
+      const tasksResponse = await thesisProjectAPI.getTasks(project._id);
+      setProjectTasks(tasksResponse.data.tasks || []);
+      
+      // Prepare project members (supervisor + students + co-supervisors)
+      const members = [
+        project.supervisor,
+        ...project.students,
+        ...(project.coSupervisors || [])
+      ].filter(Boolean);
+      setProjectMembers(members);
+      
+      setShowKanbanModal(true);
+    } catch (error) {
+      toast.error('Failed to load project tasks');
+      console.error('Kanban load error:', error);
+    }
+  };
+
+  const handleTasksUpdate = async (updatedTasks) => {
+    try {
+      await thesisProjectAPI.updateTasks(selectedProject._id, updatedTasks);
+      setProjectTasks(updatedTasks);
+    } catch (error) {
+      toast.error('Failed to update tasks');
+      console.error('Tasks update error:', error);
+    }
+  };
+
+  const handleOpenStatusModal = (project) => {
+    setSelectedProject(project);
+    setStatusForm({
+      status: project.status,
+      notes: ''
+    });
+    setShowStatusModal(true);
+  };
+
+  const handleUpdateProjectStatus = async () => {
+    try {
+      await thesisProjectAPI.updateProject(selectedProject._id, {
+        status: statusForm.status
+      });
+      
+      toast.success('Project status updated successfully');
+      
+      // Refresh projects
+      fetchMyProjects();
+      fetchAllProjects();
+      
+      // Update selected project if in details modal
+      if (showDetailsModal) {
+        await fetchProjectDetails(selectedProject._id);
+      }
+      
+      setShowStatusModal(false);
+    } catch (error) {
+      toast.error('Failed to update project status');
+      console.error('Status update error:', error);
+    }
   };
 
   return (
@@ -334,9 +408,19 @@ export default function ProjectsPage() {
                         <Eye className="h-4 w-4" />
                       </Button>
                       {canManageProject(project) && (
-                        <Button size="sm" variant="outline">
-                          <Edit className="h-4 w-4" />
-                        </Button>
+                        <>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleOpenKanban(project)}
+                            className="bg-blue-50 hover:bg-blue-100 border-blue-200"
+                          >
+                            <Target className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="outline">
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -512,6 +596,22 @@ export default function ProjectsPage() {
                   <>
                     <Button
                       size="sm"
+                      onClick={() => handleOpenKanban(selectedProject)}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      <Target className="h-4 w-4 mr-2" />
+                      Kanban Board
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleOpenStatusModal(selectedProject)}
+                      variant="outline"
+                    >
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Update Status
+                    </Button>
+                    <Button
+                      size="sm"
                       onClick={() => setShowDocumentModal(true)}
                     >
                       <Upload className="h-4 w-4 mr-2" />
@@ -529,9 +629,11 @@ export default function ProjectsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Project Info */}
-              <div className="space-y-4">
+            <div className="space-y-6">
+              {/* Project Info and Team - Two columns */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Project Info */}
+                <div className="space-y-4">
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-base">Project Information</CardTitle>
@@ -586,59 +688,27 @@ export default function ProjectsPage() {
                   </CardContent>
                 </Card>
               </div>
+              </div>
 
-              {/* Phases */}
-              <div className="space-y-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Project Phases</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {selectedProject.phases.map((phase, index) => (
-                        <div key={phase._id} className="border rounded-lg p-3">
-                          <div className="flex justify-between items-start mb-2">
-                            <div>
-                              <p className="font-medium text-sm">{phase.name}</p>
-                              <p className="text-xs text-muted-foreground">{phase.description}</p>
-                            </div>
-                            {canManageProject(selectedProject) && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                  setSelectedPhase(phase);
-                                  setPhaseForm({
-                                    status: phase.status,
-                                    progress: phase.progress,
-                                    startDate: phase.startDate ? new Date(phase.startDate).toISOString().split('T')[0] : '',
-                                    endDate: phase.endDate ? new Date(phase.endDate).toISOString().split('T')[0] : '',
-                                    deadline: phase.deadline ? new Date(phase.deadline).toISOString().split('T')[0] : ''
-                                  });
-                                  setShowPhaseModal(true);
-                                }}
-                              >
-                                <Edit className="h-3 w-3" />
-                              </Button>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge 
-                              variant={phase.status === 'completed' ? 'default' : phase.status === 'in_progress' ? 'secondary' : 'outline'}
-                              className="text-xs"
-                            >
-                              {phase.status.replace('_', ' ')}
-                            </Badge>
-                            <div className="flex-1">
-                              <Progress value={phase.progress} className="h-1" />
-                            </div>
-                            <span className="text-xs text-muted-foreground">{phase.progress}%</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+              {/* Project Progress - Kanban Style - Full Width */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Project Progress - Task Management</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Drag and drop tasks between columns to update their status
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <div className="min-h-[400px]">
+                    <KanbanBoard
+                      projectId={selectedProject._id}
+                      tasks={projectTasks}
+                      onTasksUpdate={handleTasksUpdate}
+                      projectMembers={projectMembers}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
 
                 {/* Documents */}
                 {selectedProject.documents && selectedProject.documents.length > 0 && (
@@ -668,78 +738,6 @@ export default function ProjectsPage() {
                     </CardContent>
                   </Card>
                 )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Phase Update Modal */}
-      {showPhaseModal && selectedPhase && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-background rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-semibold mb-4">Update Phase: {selectedPhase.name}</h3>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="phaseStatus">Status</Label>
-                <select
-                  id="phaseStatus"
-                  value={phaseForm.status}
-                  onChange={(e) => setPhaseForm(prev => ({ ...prev, status: e.target.value }))}
-                  className="w-full p-2 border border-input rounded-md bg-background"
-                >
-                  <option value="not_started">Not Started</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="completed">Completed</option>
-                  <option value="overdue">Overdue</option>
-                </select>
-              </div>
-              <div>
-                <Label htmlFor="phaseProgress">Progress (%)</Label>
-                <Input
-                  id="phaseProgress"
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={phaseForm.progress}
-                  onChange={(e) => setPhaseForm(prev => ({ ...prev, progress: parseInt(e.target.value) || 0 }))}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label htmlFor="startDate">Start Date</Label>
-                  <Input
-                    id="startDate"
-                    type="date"
-                    value={phaseForm.startDate}
-                    onChange={(e) => setPhaseForm(prev => ({ ...prev, startDate: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="deadline">Deadline</Label>
-                  <Input
-                    id="deadline"
-                    type="date"
-                    value={phaseForm.deadline}
-                    onChange={(e) => setPhaseForm(prev => ({ ...prev, deadline: e.target.value }))}
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => setShowPhaseModal(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={handleUpdatePhase}
-                >
-                  Update Phase
-                </Button>
-              </div>
             </div>
           </div>
         </div>
@@ -803,6 +801,99 @@ export default function ProjectsPage() {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Kanban Board Modal */}
+      {showKanbanModal && selectedProject && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-lg p-6 w-full max-w-7xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-semibold">Project Tasks - {selectedProject.title}</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Drag and drop tasks between columns to update their status
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowKanbanModal(false)}
+              >
+                <X className="h-4 w-4 mr-2" />
+                Close
+              </Button>
+            </div>
+            
+            <KanbanBoard
+              projectId={selectedProject._id}
+              tasks={projectTasks}
+              onTasksUpdate={handleTasksUpdate}
+              projectMembers={projectMembers}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Project Status Update Modal */}
+      {showStatusModal && selectedProject && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-lg p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Update Project Status</h3>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowStatusModal(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium mb-2">Current Status</p>
+                <Badge variant={getStatusColor(selectedProject.status)}>
+                  {selectedProject.status.replace('_', ' ')}
+                </Badge>
+              </div>
+              
+              <div>
+                <Label htmlFor="newStatus">New Status</Label>
+                <select
+                  id="newStatus"
+                  value={statusForm.status}
+                  onChange={(e) => setStatusForm(prev => ({ ...prev, status: e.target.value }))}
+                  className="w-full p-2 border border-input rounded-md bg-background"
+                >
+                  <option value="proposal">Proposal</option>
+                  <option value="approved">Approved</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="review">Under Review</option>
+                  <option value="defense_scheduled">Defense Scheduled</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+              
+              <div className="flex gap-2 pt-4">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowStatusModal(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleUpdateProjectStatus}
+                  disabled={statusForm.status === selectedProject.status}
+                >
+                  Update Status
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -8,12 +8,15 @@ const router = express.Router();
 // Get all groups for user
 router.get('/', auth, async (req, res) => {
   try {
+    console.log('Fetching groups for user:', req.userId);
     const groups = await Group.find({
       'members.user': req.userId
     }).populate('members.user', 'username email avatar isOnline');
 
+    console.log('Found groups:', groups.length);
     res.json(groups);
   } catch (error) {
+    console.error('Error fetching groups:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -22,6 +25,7 @@ router.get('/', auth, async (req, res) => {
 router.post('/', auth, async (req, res) => {
   try {
     const { name, description, thesisTitle, memberEmails } = req.body;
+    console.log('Creating group:', { name, description, thesisTitle, userId: req.userId });
 
     const group = new Group({
       name,
@@ -36,6 +40,8 @@ router.post('/', auth, async (req, res) => {
     });
 
     await group.save();
+    console.log('Group saved with ID:', group._id);
+    
     await group.populate('members.user', 'username email avatar isOnline');
 
     // Add to user's activity log
@@ -47,6 +53,7 @@ router.post('/', auth, async (req, res) => {
     });
     await user.save();
 
+    console.log('Sending created group:', group);
     res.status(201).json(group);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });

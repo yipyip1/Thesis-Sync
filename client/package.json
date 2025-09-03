@@ -9,7 +9,12 @@
     "eject": "react-scripts eject"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/modifiers": "^9.0.0",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@heroicons/react": "^2.0.18",
+    "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.2",
     "@radix-ui/react-alert-dialog": "^1.1.4",
     "@radix-ui/react-aspect-ratio": "^1.1.1",
@@ -49,19 +54,18 @@
     "react-dom": "^18.2.0",
     "react-dropzone": "^14.2.3",
     "react-hook-form": "^7.53.2",
-    "@hookform/resolvers": "^3.10.0",
     "react-hot-toast": "^2.4.1",
     "react-router-dom": "^6.17.0",
     "react-scripts": "^5.0.1",
+    "recharts": "^2.13.3",
     "simple-peer": "^9.11.1",
-    "socket.io-client": "^4.7.2",
+    "socket.io-client": "^4.8.1",
+    "sonner": "^1.7.1",
     "tailwind-merge": "^2.5.4",
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^11.1.0",
-    "zod": "^3.24.1",
     "vaul": "^1.1.1",
-    "sonner": "^1.7.1",
-    "recharts": "^2.13.3"
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.16",

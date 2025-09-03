@@ -71,6 +71,93 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
+// Get teams ready for supervision (for supervisors)
+router.get('/for-supervision', auth, async (req, res) => {
+  try {
+    console.log('=== TEAMS FOR SUPERVISION REQUEST ===');
+    console.log('User ID:', req.userId);
+    
+    // Get user to check if they're a supervisor
+    const user = await User.findById(req.userId);
+    console.log('User role:', user?.role);
+    
+    if (!user || user.role !== 'supervisor') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Only supervisors can view teams for supervision.'
+      });
+    }
+
+    const {
+      page = 1,
+      limit = 10,
+      category,
+      search
+    } = req.query;
+
+    // Query for teams ready for supervision:
+    // 1. Team is full (current size = max size)
+    // 2. Status is 'in_progress' (no longer recruiting)
+    // 3. Either no supervisor assigned OR supervisor request is 'none' or 'rejected'
+    const query = {
+      $expr: { $eq: ['$teamSize.current', '$teamSize.max'] }, // Team is full
+      status: 'in_progress', // Ready and no longer recruiting
+      $or: [
+        { supervisor: { $exists: false } }, // No supervisor assigned
+        { supervisor: null }, // No supervisor assigned
+        { 'supervisorRequest.status': 'none' }, // No supervision requested yet
+        { 'supervisorRequest.status': 'rejected' } // Previous request was rejected
+      ]
+    };
+
+    // Add filters
+    if (category && category !== 'all') {
+      query.category = category;
+    }
+
+    if (search) {
+      query.$or = [
+        { title: new RegExp(search, 'i') },
+        { description: new RegExp(search, 'i') },
+        { thesisTopic: new RegExp(search, 'i') }
+      ];
+    }
+
+    console.log('Query for teams ready for supervision:', JSON.stringify(query, null, 2));
+
+    const teamRequests = await TeamRequest.find(query)
+      .populate([
+        { path: 'creator', select: 'name email avatar department university' },
+        { path: 'members.user', select: 'name email avatar department university skills' },
+        { path: 'supervisor', select: 'name email avatar department' }
+      ])
+      .sort({ createdAt: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const total = await TeamRequest.countDocuments(query);
+
+    console.log('Found teams ready for supervision:', teamRequests.length);
+
+    res.json({
+      success: true,
+      teamRequests,
+      pagination: {
+        current: parseInt(page),
+        pages: Math.ceil(total / limit),
+        total
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching teams for supervision:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+});
+
 // Get all team requests
 router.get('/', auth, async (req, res) => {
   try {
@@ -334,6 +421,10 @@ router.post('/:id/apply', auth, async (req, res) => {
 // Accept/reject team application
 router.put('/:id/applications/:applicationId', auth, async (req, res) => {
   try {
+    console.log('=== MANAGE APPLICATION REQUEST ===');
+    console.log('Request params:', req.params);
+    console.log('Request body:', req.body);
+    console.log('User ID:', req.userId);
     console.log('Manage application request:', {
       teamId: req.params.id,
       applicationId: req.params.applicationId,
@@ -342,51 +433,71 @@ router.put('/:id/applications/:applicationId', auth, async (req, res) => {
     });
 
     const { status } = req.body; // 'accepted' or 'rejected'
+    
+    console.log('Attempting to find team request...');
     const teamRequest = await TeamRequest.findById(req.params.id);
 
     if (!teamRequest) {
-      console.log('Team request not found:', req.params.id);
+      console.log('❌ Team request not found:', req.params.id);
       return res.status(404).json({
         success: false,
         message: 'Team request not found'
       });
     }
 
-    console.log('Team request found:', {
+    console.log('✅ Team request found successfully');
+    console.log('Team request details:', {
       teamId: teamRequest._id,
       creator: teamRequest.creator,
       currentUser: req.userId,
-      applicationsCount: teamRequest.applications.length
+      applicationsCount: teamRequest.applications.length,
+      applications: teamRequest.applications.map(app => ({
+        id: app._id,
+        user: app.user,
+        status: app.status
+      }))
     });
 
     // Check if current user is the creator
     if (teamRequest.creator.toString() !== req.userId) {
-      console.log('Permission denied - not creator');
+      console.log('❌ Permission denied - not creator:', {
+        teamCreator: teamRequest.creator.toString(),
+        currentUser: req.userId
+      });
       return res.status(403).json({
         success: false,
         message: 'Only team creator can manage applications'
       });
     }
 
+    console.log('✅ Permission check passed - user is creator');
+
+    console.log('Looking for application with ID:', req.params.applicationId);
     const application = teamRequest.applications.id(req.params.applicationId);
     if (!application) {
-      console.log('Application not found:', req.params.applicationId);
-      console.log('Available applications:', teamRequest.applications.map(app => ({ id: app._id, user: app.user })));
+      console.log('❌ Application not found:', req.params.applicationId);
+      console.log('Available applications:', teamRequest.applications.map(app => ({ 
+        id: app._id.toString(), 
+        user: app.user,
+        status: app.status 
+      })));
       return res.status(404).json({
         success: false,
         message: 'Application not found'
       });
     }
 
-    console.log('Application found:', {
+    console.log('✅ Application found:', {
       applicationId: application._id,
       user: application.user,
       currentStatus: application.status
     });
 
     application.status = status;
+    console.log('✅ Application status updated to:', status);
 
     if (status === 'accepted') {
+      console.log('Processing acceptance...');
       // Add user to team members
       teamRequest.members.push({
         user: application.user,
@@ -394,35 +505,56 @@ router.put('/:id/applications/:applicationId', auth, async (req, res) => {
         joinedAt: new Date()
       });
       teamRequest.teamSize.current += 1;
+      console.log('User added to team members, current team size:', teamRequest.teamSize.current);
 
       // If team is now full, close the request
       if (teamRequest.teamSize.current >= teamRequest.teamSize.max) {
         teamRequest.status = 'in_progress';
+        console.log('Team is now full, status changed to in_progress');
       }
     }
 
+    console.log('Saving team request...');
     await teamRequest.save();
-    console.log('Team request updated successfully');
+    console.log('✅ Team request updated successfully');
 
-    // Create notification for applicant
-    const notification = new Notification({
-      recipient: application.user,
-      sender: req.userId,
-      type: 'team_application_response',
-      title: `Team Application ${status === 'accepted' ? 'Accepted' : 'Rejected'}`,
-      message: `Your application to join "${teamRequest.title}" has been ${status}`,
-      relatedId: teamRequest._id,
-      relatedModel: 'TeamRequest'
-    });
-    await notification.save();
-    console.log('Notification created for applicant');
+    if (status === 'accepted') {
+      // If accepted, remove the original team application notification
+      console.log('Removing original team application notification...');
+      try {
+        await Notification.findOneAndDelete({
+          type: 'team_application',
+          'actionData.teamId': teamRequest._id,
+          'actionData.applicationId': req.params.applicationId
+        });
+        console.log('✅ Original notification removed');
+      } catch (deleteError) {
+        console.log('⚠️ Could not delete original notification:', deleteError.message);
+      }
+    } else {
+      // If rejected, create notification for applicant
+      console.log('Creating notification for applicant...');
+      const notification = new Notification({
+        recipient: application.user,
+        sender: req.userId,
+        type: 'team_application_response',
+        title: `Team Application Rejected`,
+        message: `Your application to join "${teamRequest.title}" has been rejected`,
+        relatedId: teamRequest._id,
+        relatedModel: 'TeamRequest'
+      });
+      await notification.save();
+      console.log('✅ Notification created for applicant');
+    }
 
     res.json({
       success: true,
       message: `Application ${status} successfully`
     });
+    console.log('✅ Response sent successfully');
   } catch (error) {
-    console.error('Manage application error:', error);
+    console.error('❌ MANAGE APPLICATION ERROR:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
       message: 'Server error',
@@ -678,6 +810,34 @@ router.post('/test-email', auth, async (req, res) => {
       details: emailResult
     });
   } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+});
+
+// Get user's teams (teams where user is a member)
+router.get('/my-teams', auth, async (req, res) => {
+  try {
+    const teams = await TeamRequest.find({
+      'members.user': req.userId,
+      status: { $in: ['open', 'in_progress', 'completed'] }
+    })
+    .populate([
+      { path: 'creator', select: 'name email avatar department' },
+      { path: 'members.user', select: 'name email avatar department' },
+      { path: 'supervisor', select: 'name email avatar department' }
+    ])
+    .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      teams
+    });
+  } catch (error) {
+    console.error('Get my teams error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error',

@@ -2,10 +2,33 @@ import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
-// Create axios instance
+// Create axios instance with timeout and retry configuration
 const api = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 15000, // 15 second timeout
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
+
+// Request retry logic
+const retryRequest = async (config, retryCount = 0) => {
+  const maxRetries = 3;
+  try {
+    return await api(config);
+  } catch (error) {
+    if (retryCount < maxRetries && (
+      error.code === 'ECONNABORTED' ||
+      error.code === 'NETWORK_ERROR' ||
+      (error.response && error.response.status >= 500)
+    )) {
+      console.log(`Retry attempt ${retryCount + 1} for ${config.url}`);
+      await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+      return retryRequest(config, retryCount + 1);
+    }
+    throw error;
+  }
+};
 
 // Add auth token to all requests
 api.interceptors.request.use((config) => {
@@ -16,15 +39,42 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle auth errors
+// Handle auth errors and network issues
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
+  async (error) => {
+    const originalRequest = error.config;
+    
+    // Handle 401 unauthorized
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      
+      // Use a more graceful redirect that doesn't break the app state
+      setTimeout(() => {
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
+      }, 1000);
+      
+      return Promise.reject(error);
     }
+    
+    // Handle network errors with retry
+    if (!originalRequest._retry && (
+      error.code === 'ECONNABORTED' ||
+      error.code === 'NETWORK_ERROR' ||
+      !error.response
+    )) {
+      originalRequest._retry = true;
+      try {
+        return await retryRequest(originalRequest);
+      } catch (retryError) {
+        console.error('Request failed after retries:', retryError);
+      }
+    }
+    
     return Promise.reject(error);
   }
 );
@@ -65,6 +115,14 @@ export const messageAPI = {
   uploadFile: (formData) => api.post('/messages/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
+  
+  // Message Request APIs
+  sendMessageRequest: (receiverId, message) => api.post('/messages/request', { receiverId, message }),
+  getMessageRequests: () => api.get('/messages/requests'),
+  respondToMessageRequest: (requestId, action) => api.put(`/messages/requests/${requestId}`, { action }), // action: 'accept' or 'decline'
+  getDirectConversation: (userId) => api.get(`/messages/direct/${userId}`),
+  getDirectConversations: () => api.get('/messages/conversations'),
+  sendDirectMessage: (receiverId, message) => api.post('/messages/direct', { receiverId, message }),
 };
 
 // User API
@@ -99,7 +157,9 @@ export const thesisIdeaAPI = {
 // Team Requests API
 export const teamRequestAPI = {
   getTeamRequests: (params) => api.get('/team-requests', { params }),
+  getTeamsForSupervision: (params) => api.get('/team-requests/for-supervision', { params }),
   getMyTeamRequests: () => api.get('/team-requests/my-requests'),
+  getMyTeams: () => api.get('/team-requests/my-teams'),
   createTeamRequest: (data) => api.post('/team-requests', data),
   updateTeamRequest: (id, data) => api.put(`/team-requests/${id}`, data),
   deleteTeamRequest: (id) => api.delete(`/team-requests/${id}`),
@@ -116,6 +176,7 @@ export const thesisProjectAPI = {
   getProject: (id) => api.get(`/thesis-projects/${id}`),
   createProject: (data) => api.post('/thesis-projects', data),
   updateProject: (id, data) => api.put(`/thesis-projects/${id}`, data),
+  deleteProject: (id) => api.delete(`/thesis-projects/${id}`),
   updatePhase: (id, phaseId, data) => api.put(`/thesis-projects/${id}/phases/${phaseId}`, data),
   uploadDocument: (id, formData) => api.post(`/thesis-projects/${id}/documents`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -123,6 +184,13 @@ export const thesisProjectAPI = {
   addMilestone: (id, data) => api.post(`/thesis-projects/${id}/milestones`, data),
   getDashboardStats: () => api.get('/thesis-projects/stats/dashboard'),
   cleanupTestProjects: () => api.delete('/thesis-projects/cleanup/test-projects'),
+  
+  // Task management
+  getTasks: (projectId) => api.get(`/thesis-projects/${projectId}/tasks`),
+  updateTasks: (projectId, tasks) => api.put(`/thesis-projects/${projectId}/tasks`, { tasks }),
+  createTask: (projectId, taskData) => api.post(`/thesis-projects/${projectId}/tasks`, taskData),
+  updateTask: (projectId, taskId, taskData) => api.put(`/thesis-projects/${projectId}/tasks/${taskId}`, taskData),
+  deleteTask: (projectId, taskId) => api.delete(`/thesis-projects/${projectId}/tasks/${taskId}`),
 };
 
 // Notifications API
@@ -131,12 +199,21 @@ export const notificationAPI = {
   markAsRead: (id) => api.put(`/notifications/${id}/read`),
   markAllAsRead: () => api.put('/notifications/mark-all-read'),
   deleteNotification: (id) => api.delete(`/notifications/${id}`),
+  clearAllNotifications: () => api.delete('/notifications/clear-all'),
   createNotification: (data) => api.post('/notifications', data),
   sendDeadlineReminders: () => api.post('/notifications/deadline-reminders'),
 };
 
 export const activityAPI = {
   getDashboardActivity: (params) => api.get('/activity/dashboard-activity', { params }),
+};
+
+// Thesis Applications API
+export const thesisApplicationAPI = {
+  applyForProject: (data) => api.post('/thesis-applications', data),
+  getProjectApplications: (projectId) => api.get(`/thesis-applications/project/${projectId}`),
+  getMyApplications: () => api.get('/thesis-applications/my-applications'),
+  updateApplication: (applicationId, data) => api.put(`/thesis-applications/${applicationId}`, data),
 };
 
 export default api;

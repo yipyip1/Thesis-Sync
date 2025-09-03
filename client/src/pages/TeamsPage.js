@@ -22,7 +22,8 @@ import {
   AlertCircle,
   Filter,
   Eye,
-  Send
+  Send,
+  Trash2
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { teamRequestAPI, userAPI } from '../utils/api';
@@ -40,6 +41,7 @@ export default function TeamsPage() {
   // Data states
   const [teamRequests, setTeamRequests] = useState([]);
   const [myTeamRequests, setMyTeamRequests] = useState([]);
+  const [myTeams, setMyTeams] = useState([]);
   const [supervisors, setSupervisors] = useState([]);
   
   // Modal states
@@ -67,6 +69,7 @@ export default function TeamsPage() {
   useEffect(() => {
     fetchTeamRequests();
     fetchMyTeamRequests();
+    fetchMyTeams();
     if (user?.role === 'student') {
       fetchSupervisors();
     }
@@ -80,7 +83,15 @@ export default function TeamsPage() {
       if (skillsFilter) params.skills = skillsFilter;
       if (searchTerm) params.search = searchTerm;
       
-      const response = await teamRequestAPI.getTeamRequests(params);
+      let response;
+      if (user?.role === 'supervisor') {
+        // Supervisors see teams ready for supervision (full teams looking for supervisors)
+        response = await teamRequestAPI.getTeamsForSupervision(params);
+      } else {
+        // Students see regular team requests (teams still recruiting)
+        response = await teamRequestAPI.getTeamRequests(params);
+      }
+      
       setTeamRequests(response.data.teamRequests || []);
     } catch (error) {
       toast.error('Failed to fetch team requests');
@@ -96,6 +107,15 @@ export default function TeamsPage() {
       setMyTeamRequests(response.data.teamRequests || []);
     } catch (error) {
       console.error('Fetch my team requests error:', error);
+    }
+  };
+
+  const fetchMyTeams = async () => {
+    try {
+      const response = await teamRequestAPI.getMyTeams();
+      setMyTeams(response.data.teams || []);
+    } catch (error) {
+      console.error('Fetch my teams error:', error);
     }
   };
 
@@ -129,6 +149,7 @@ export default function TeamsPage() {
       });
       fetchTeamRequests();
       fetchMyTeamRequests();
+      fetchMyTeams();
     } catch (error) {
       toast.error('Failed to create team request');
       console.error('Create team error:', error);
@@ -145,6 +166,8 @@ export default function TeamsPage() {
       setApplicationMessage('');
       setSelectedTeam(null);
       fetchTeamRequests();
+      fetchMyTeamRequests();
+      fetchMyTeams();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to apply to team');
       console.error('Apply to team error:', error);
@@ -153,12 +176,17 @@ export default function TeamsPage() {
 
   const handleManageApplication = async (teamId, applicationId, status) => {
     try {
-      await teamRequestAPI.manageApplication(teamId, applicationId, status);
+      const response = await teamRequestAPI.manageApplication(teamId, applicationId, status);
+      console.log('Manage application response:', response);
+      
+      // If we reach here, the request was successful
       toast.success(`Application ${status} successfully`);
       fetchMyTeamRequests();
+      fetchMyTeams(); // Also refresh the teams list
     } catch (error) {
-      toast.error(`Failed to ${status} application`);
       console.error('Manage application error:', error);
+      const errorMessage = error.response?.data?.message || error.message || `Failed to ${status} application`;
+      toast.error(errorMessage);
     }
   };
 
@@ -170,9 +198,24 @@ export default function TeamsPage() {
       setSupervisorMessage('');
       setSelectedSupervisor(null);
       fetchMyTeamRequests();
+      fetchMyTeams();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to request supervisor');
       console.error('Request supervisor error:', error);
+    }
+  };
+
+  const handleOfferSupervision = async (teamId) => {
+    try {
+      await teamRequestAPI.requestSupervisor(teamId, user._id, supervisorMessage);
+      toast.success('Supervision offer sent successfully');
+      setShowSupervisorModal(false);
+      setSupervisorMessage('');
+      setSelectedTeam(null);
+      fetchTeamRequests(); // Refresh the browse tab
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to offer supervision');
+      console.error('Offer supervision error:', error);
     }
   };
 
@@ -181,9 +224,28 @@ export default function TeamsPage() {
       await teamRequestAPI.respondToSupervision(teamId, status, responseMessage);
       toast.success(`Supervision request ${status} successfully`);
       fetchMyTeamRequests();
+      fetchMyTeams();
     } catch (error) {
       toast.error(`Failed to ${status} supervision request`);
       console.error('Supervisor response error:', error);
+    }
+  };
+
+  const handleDeleteTeamRequest = async (teamId) => {
+    if (!window.confirm('Are you sure you want to delete this team request? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await teamRequestAPI.deleteTeamRequest(teamId);
+      toast.success('Team request deleted successfully');
+      fetchMyTeamRequests();
+      fetchMyTeams();
+      fetchTeamRequests(); // Also refresh the browse tab
+    } catch (error) {
+      console.error('Delete team request error:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to delete team request';
+      toast.error(errorMessage);
     }
   };
 
@@ -229,7 +291,12 @@ export default function TeamsPage() {
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Teams</h1>
-            <p className="text-muted-foreground">Join or create thesis teams and collaborate with peers</p>
+            <p className="text-muted-foreground">
+              {user?.role === 'supervisor' 
+                ? 'Find complete teams ready for supervision' 
+                : 'Join or create thesis teams and collaborate with peers'
+              }
+            </p>
           </div>
           {user?.role === 'student' && (
             <Button onClick={() => setShowCreateModal(true)}>
@@ -245,14 +312,32 @@ export default function TeamsPage() {
             className={`px-4 py-2 font-medium ${activeTab === 'browse' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground'}`}
             onClick={() => setActiveTab('browse')}
           >
-            Browse Teams
+            {user?.role === 'supervisor' ? 'Teams for Supervision' : 'Browse Teams'}
           </button>
-          <button
-            className={`px-4 py-2 font-medium ${activeTab === 'my-teams' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground'}`}
-            onClick={() => setActiveTab('my-teams')}
-          >
-            My Teams
-          </button>
+          {user?.role === 'student' && (
+            <>
+              <button
+                className={`px-4 py-2 font-medium ${activeTab === 'my-teams' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground'}`}
+                onClick={() => setActiveTab('my-teams')}
+              >
+                My Teams
+              </button>
+              <button
+                className={`px-4 py-2 font-medium ${activeTab === 'my-requests' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground'}`}
+                onClick={() => setActiveTab('my-requests')}
+              >
+                My Requests
+              </button>
+            </>
+          )}
+          {user?.role === 'supervisor' && (
+            <button
+              className={`px-4 py-2 font-medium ${activeTab === 'my-teams' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground'}`}
+              onClick={() => setActiveTab('my-teams')}
+            >
+              My Supervised Teams
+            </button>
+          )}
         </div>
 
         {/* Search and Filters */}
@@ -360,25 +445,43 @@ export default function TeamsPage() {
 
                     {/* Actions */}
                     {(() => {
-                      const isStudent = user?.role === 'student';
-                      const notMember = !isTeamMember(team);
-                      const notCreator = !isTeamCreator(team);
-                      const isOpen = team.status === 'open';
-                      const shouldShow = isStudent && notMember && notCreator && isOpen;
-                      
-                      console.log('Apply button condition:', {
-                        teamTitle: team.title,
-                        isStudent,
-                        notMember,
-                        notCreator,
-                        isOpen,
-                        shouldShow
-                      });
-                      
-                      return shouldShow;
+                      if (user?.role === 'supervisor') {
+                        // Supervisors can offer supervision to teams that don't have a supervisor
+                        const needsSupervisor = !team.supervisor || team.supervisorRequest?.status === 'none' || team.supervisorRequest?.status === 'rejected';
+                        return needsSupervisor;
+                      } else {
+                        // Students can apply to join teams
+                        const isStudent = user?.role === 'student';
+                        const notMember = !isTeamMember(team);
+                        const notCreator = !isTeamCreator(team);
+                        const isOpen = team.status === 'open';
+                        const shouldShow = isStudent && notMember && notCreator && isOpen;
+                        
+                        console.log('Apply button condition:', {
+                          teamTitle: team.title,
+                          isStudent,
+                          notMember,
+                          notCreator,
+                          isOpen,
+                          shouldShow
+                        });
+                        
+                        return shouldShow;
+                      }
                     })() && (
                       <div className="flex gap-2">
-                        {hasApplied(team) ? (
+                        {user?.role === 'supervisor' ? (
+                          <Button
+                            onClick={() => {
+                              setSelectedTeam(team);
+                              setShowSupervisorModal(true);
+                            }}
+                            className="bg-primary hover:bg-primary/90"
+                          >
+                            <UserPlus className="h-4 w-4 mr-2" />
+                            Offer Supervision
+                          </Button>
+                        ) : hasApplied(team) ? (
                           <Badge variant="outline">Application Sent</Badge>
                         ) : (
                           <Button
@@ -435,11 +538,115 @@ export default function TeamsPage() {
 
         {activeTab === 'my-teams' && (
           <div className="space-y-4">
-            {myTeamRequests.length === 0 ? (
+            {myTeams.length === 0 ? (
               <Card>
                 <CardContent className="p-8 text-center">
                   <Users className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                   <h3 className="text-lg font-medium mb-2">No teams yet</h3>
+                  <p className="text-muted-foreground">
+                    {user?.role === 'student' 
+                      ? "You haven't joined any teams yet. Apply to existing teams or create your own team request." 
+                      : "No teams assigned yet."}
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              myTeams.map((team) => (
+                <Card key={team._id}>
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          {team.title}
+                          <Badge variant={team.status === 'open' ? 'default' : team.status === 'in_progress' ? 'secondary' : 'outline'}>
+                            {team.status}
+                          </Badge>
+                        </CardTitle>
+                        <CardDescription>{team.thesisTopic}</CardDescription>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Users className="h-4 w-4" />
+                        {team.teamSize.current}/{team.teamSize.max}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <p className="text-sm text-muted-foreground">{team.description}</p>
+                    
+                    {/* Team Members */}
+                    <div>
+                      <h4 className="font-medium mb-2">Team Members:</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {team.members.map((member, index) => (
+                          <div key={index} className="flex items-center gap-2 p-2 border rounded-lg">
+                            <div className="w-6 h-6 bg-primary/10 rounded-full flex items-center justify-center">
+                              {member.role === 'leader' && <Crown className="h-3 w-3 text-primary" />}
+                            </div>
+                            <span className="text-sm">{member.user.name}</span>
+                            <Badge variant="outline" className="text-xs">{member.role}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Supervisor Status */}
+                    <div>
+                      <h4 className="font-medium mb-2">Supervisor:</h4>
+                      {team.supervisor ? (
+                        <div className="flex items-center justify-between p-3 border rounded-lg">
+                          <div>
+                            <p className="font-medium">{team.supervisor.name}</p>
+                            <p className="text-sm text-muted-foreground">{team.supervisor.department}</p>
+                          </div>
+                          <Badge variant={
+                            team.supervisorRequest?.status === 'accepted' ? 'default' :
+                            team.supervisorRequest?.status === 'pending' ? 'secondary' : 'destructive'
+                          }>
+                            {team.supervisorRequest?.status || 'assigned'}
+                          </Badge>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between p-3 border rounded-lg border-dashed">
+                          <span className="text-muted-foreground">No supervisor assigned</span>
+                          {canManageTeam(team) && user?.role === 'student' && (
+                            <Button
+                              size="sm"
+                              onClick={() => setShowSupervisorModal(true)}
+                            >
+                              Request Supervisor
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Required Skills */}
+                    {team.requiredSkills && team.requiredSkills.length > 0 && (
+                      <div>
+                        <h4 className="font-medium mb-2">Required Skills:</h4>
+                        <div className="flex flex-wrap gap-1">
+                          {team.requiredSkills.map((skill, index) => (
+                            <Badge key={index} variant="secondary" className="text-xs">
+                              {skill}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        )}
+
+        {activeTab === 'my-requests' && (
+          <div className="space-y-4">
+            {myTeamRequests.length === 0 ? (
+              <Card>
+                <CardContent className="p-8 text-center">
+                  <Users className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                  <h3 className="text-lg font-medium mb-2">No team requests yet</h3>
                   <p className="text-muted-foreground">
                     {user?.role === 'student' 
                       ? "Create a team request or apply to join existing teams." 
@@ -461,9 +668,22 @@ export default function TeamsPage() {
                         </CardTitle>
                         <CardDescription>{team.thesisTopic}</CardDescription>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Users className="h-4 w-4" />
-                        {team.teamSize.current}/{team.teamSize.max}
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Users className="h-4 w-4" />
+                          {team.teamSize.current}/{team.teamSize.max}
+                        </div>
+                        {/* Delete button for team creator */}
+                        {isTeamCreator(team) && (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleDeleteTeamRequest(team._id)}
+                            className="ml-2"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardHeader>
@@ -681,56 +901,82 @@ export default function TeamsPage() {
         </div>
       )}
 
-      {/* Request Supervisor Modal */}
+      {/* Request/Offer Supervisor Modal */}
       {showSupervisorModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-background rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4">Request Supervisor</h3>
+            <h3 className="text-lg font-semibold mb-4">
+              {user?.role === 'supervisor' ? 'Offer Supervision' : 'Request Supervisor'}
+            </h3>
             <div className="space-y-4">
-              <div>
-                <Label>Select Supervisor</Label>
-                <div className="max-h-60 overflow-y-auto border rounded-lg">
-                  {supervisors.map((supervisor) => (
-                    <div
-                      key={supervisor._id}
-                      className={`p-3 border-b cursor-pointer hover:bg-muted/50 ${
-                        selectedSupervisor?._id === supervisor._id ? 'bg-primary/10' : ''
-                      }`}
-                      onClick={() => setSelectedSupervisor(supervisor)}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="font-medium">{supervisor.name}</p>
-                          <p className="text-sm text-muted-foreground">{supervisor.department}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <Badge variant="outline">{supervisor.availability}</Badge>
-                            <span className="text-xs text-muted-foreground">
-                              {supervisor.currentStudents}/{supervisor.maxStudents} students
-                            </span>
+              {user?.role === 'supervisor' ? (
+                // Supervisor offering supervision
+                <div>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    You are offering to supervise the team "{selectedTeam?.title}". 
+                    Please provide a message explaining your interest and qualifications.
+                  </p>
+                  <div>
+                    <Label htmlFor="supervisorMessage">Message to Team</Label>
+                    <textarea
+                      id="supervisorMessage"
+                      value={supervisorMessage}
+                      onChange={(e) => setSupervisorMessage(e.target.value)}
+                      placeholder="Describe your expertise and why you'd like to supervise this team..."
+                      className="w-full p-2 border border-input rounded-md bg-background min-h-[100px]"
+                      required
+                    />
+                  </div>
+                </div>
+              ) : (
+                // Student requesting supervisor
+                <>
+                  <div>
+                    <Label>Select Supervisor</Label>
+                    <div className="max-h-60 overflow-y-auto border rounded-lg">
+                      {supervisors.map((supervisor) => (
+                        <div
+                          key={supervisor._id}
+                          className={`p-3 border-b cursor-pointer hover:bg-muted/50 ${
+                            selectedSupervisor?._id === supervisor._id ? 'bg-primary/10' : ''
+                          }`}
+                          onClick={() => setSelectedSupervisor(supervisor)}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-medium">{supervisor.name}</p>
+                              <p className="text-sm text-muted-foreground">{supervisor.department}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <Badge variant="outline">{supervisor.availability}</Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {supervisor.currentStudents}/{supervisor.maxStudents} students
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                              <span className="text-sm">{supervisor.rating.toFixed(1)}</span>
+                            </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                          <span className="text-sm">{supervisor.rating.toFixed(1)}</span>
-                        </div>
-                      </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </div>
-              
-              {selectedSupervisor && (
-                <div>
-                  <Label htmlFor="supervisorMessage">Message to Supervisor</Label>
-                  <textarea
-                    id="supervisorMessage"
-                    value={supervisorMessage}
-                    onChange={(e) => setSupervisorMessage(e.target.value)}
-                    placeholder="Describe your project and why you'd like them to supervise..."
-                    className="w-full p-2 border border-input rounded-md bg-background min-h-[100px]"
-                    required
-                  />
-                </div>
+                  </div>
+                  
+                  {selectedSupervisor && (
+                    <div>
+                      <Label htmlFor="supervisorMessage">Message to Supervisor</Label>
+                      <textarea
+                        id="supervisorMessage"
+                        value={supervisorMessage}
+                        onChange={(e) => setSupervisorMessage(e.target.value)}
+                        placeholder="Describe your project and why you'd like them to supervise..."
+                        className="w-full p-2 border border-input rounded-md bg-background min-h-[100px]"
+                        required
+                      />
+                    </div>
+                  )}
+                </>
               )}
               
               <div className="flex gap-2">
@@ -741,16 +987,27 @@ export default function TeamsPage() {
                     setShowSupervisorModal(false);
                     setSelectedSupervisor(null);
                     setSupervisorMessage('');
+                    setSelectedTeam(null);
                   }}
                 >
                   Cancel
                 </Button>
                 <Button
                   className="flex-1"
-                  onClick={() => handleRequestSupervisor(myTeamRequests[0]?._id, selectedSupervisor._id)}
-                  disabled={!selectedSupervisor || !supervisorMessage.trim()}
+                  onClick={() => {
+                    if (user?.role === 'supervisor') {
+                      handleOfferSupervision(selectedTeam._id);
+                    } else {
+                      handleRequestSupervisor(myTeamRequests[0]?._id, selectedSupervisor._id);
+                    }
+                  }}
+                  disabled={
+                    user?.role === 'supervisor' 
+                      ? !supervisorMessage.trim()
+                      : !selectedSupervisor || !supervisorMessage.trim()
+                  }
                 >
-                  Send Request
+                  {user?.role === 'supervisor' ? 'Send Offer' : 'Send Request'}
                 </Button>
               </div>
             </div>

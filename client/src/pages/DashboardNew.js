@@ -5,13 +5,14 @@ import { Badge } from '../components/ui/badge';
 import { Progress } from '../components/ui/progress';
 import { BookOpen, Users, MessageSquare, Calendar, CheckCircle, Plus, Search, Filter, TrendingUp, Clock, UserPlus, Lightbulb, AlertCircle, FolderPlus, Folder, User, Shield, Activity, Mail, Bell, Megaphone } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Navigation from '../components/Navigation';
 import { thesisProjectAPI, teamRequestAPI, thesisIdeaAPI, notificationAPI, activityAPI } from '../utils/api';
 import toast from 'react-hot-toast';
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   
   // State for real data
   const [stats, setStats] = useState({
@@ -651,7 +652,10 @@ export default function DashboardPage() {
 
         {/* Quick Actions */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="cursor-pointer hover:shadow-lg transition-shadow">
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow"
+            onClick={() => navigate('/supervisors')}
+          >
             <CardContent className="p-6 text-center">
               <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mx-auto mb-4">
                 <Search className="h-6 w-6 text-primary" />
@@ -661,7 +665,10 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="cursor-pointer hover:shadow-lg transition-shadow">
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow"
+            onClick={() => navigate('/teams')}
+          >
             <CardContent className="p-6 text-center">
               <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mx-auto mb-4">
                 <Users className="h-6 w-6 text-primary" />
@@ -671,7 +678,10 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="cursor-pointer hover:shadow-lg transition-shadow">
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow"
+            onClick={() => navigate('/ideas')}
+          >
             <CardContent className="p-6 text-center">
               <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mx-auto mb-4">
                 <BookOpen className="h-6 w-6 text-primary" />

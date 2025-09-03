@@ -55,7 +55,8 @@ router.post('/', auth, async (req, res) => {
       category,
       tags,
       expectedEndDate,
-      teamRequestId
+      teamRequestId,
+      isPublic
     } = req.body;
 
     if (!title || !description || !category) {
@@ -83,6 +84,7 @@ router.post('/', auth, async (req, res) => {
       category,
       tags: Array.isArray(tags) ? tags : (tags ? tags.split(',').map(t => t.trim()) : []),
       expectedEndDate: expectedEndDate ? new Date(expectedEndDate) : undefined,
+      isPublic: isPublic !== undefined ? isPublic : true, // Default to public for supervisor-created projects
       // Initialize with basic phases
       phases: [
         {
@@ -193,6 +195,10 @@ router.post('/', auth, async (req, res) => {
 // Get all projects (with filtering and search)
 router.get('/', auth, async (req, res) => {
   try {
+    console.log('=== THESIS PROJECTS GET REQUEST ===');
+    console.log('User ID:', req.userId);
+    console.log('Query params:', req.query);
+    
     const {
       page = 1,
       limit = 10,
@@ -204,46 +210,68 @@ router.get('/', auth, async (req, res) => {
     } = req.query;
 
     const query = {};
+    const andConditions = [];
 
     // Add search functionality
     if (search) {
-      query.$or = [
-        { title: new RegExp(search, 'i') },
-        { description: new RegExp(search, 'i') },
-        { tags: { $in: [new RegExp(search, 'i')] } }
-      ];
+      console.log('Adding search condition for:', search);
+      andConditions.push({
+        $or: [
+          { title: new RegExp(search, 'i') },
+          { description: new RegExp(search, 'i') },
+          { tags: { $in: [new RegExp(search, 'i')] } }
+        ]
+      });
     }
 
     // Add filters
     if (category && category !== 'all') {
+      console.log('Adding category filter:', category);
       query.category = category;
     }
 
     if (status && status !== 'all') {
+      console.log('Adding status filter:', status);
       query.status = status;
     }
 
     if (supervisor) {
-      query.$or = [
-        { supervisor },
-        { coSupervisors: supervisor }
-      ];
+      console.log('Adding supervisor filter:', supervisor);
+      andConditions.push({
+        $or: [
+          { supervisor },
+          { coSupervisors: supervisor }
+        ]
+      });
     }
 
     if (student) {
+      console.log('Adding student filter:', student);
       query.students = student;
     }
 
     // If not admin, only show public projects or projects user is involved in
     const currentUser = await User.findById(req.userId);
+    console.log('Current user:', { id: currentUser._id, role: currentUser.role });
+    
     if (currentUser.role !== 'admin') {
-      query.$or = [
-        { isPublic: true },
-        { students: req.userId },
-        { supervisor: req.userId },
-        { coSupervisors: req.userId }
-      ];
+      console.log('Adding non-admin access filter');
+      andConditions.push({
+        $or: [
+          { isPublic: true },
+          { students: req.userId },
+          { supervisor: req.userId },
+          { coSupervisors: req.userId }
+        ]
+      });
     }
+
+    // Combine all conditions
+    if (andConditions.length > 0) {
+      query.$and = andConditions;
+    }
+
+    console.log('Final query:', JSON.stringify(query, null, 2));
 
     const projects = await ThesisProject.find(query)
       .populate([
@@ -254,6 +282,9 @@ router.get('/', auth, async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
+
+    console.log('Found projects:', projects.length);
+    console.log('Projects:', projects.map(p => ({ title: p.title, isPublic: p.isPublic, supervisor: p.supervisor?.name })));
 
     const total = await ThesisProject.countDocuments(query);
 
@@ -266,7 +297,10 @@ router.get('/', auth, async (req, res) => {
         total
       }
     });
+    
+    console.log('=== END THESIS PROJECTS REQUEST ===');
   } catch (error) {
+    console.error('Error in thesis projects GET:', error);
     res.status(500).json({
       success: false,
       message: 'Server error',
@@ -477,6 +511,73 @@ router.put('/:id/phases/:phaseId', auth, async (req, res) => {
       project
     });
   } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+});
+
+// Delete project
+router.delete('/:id', auth, async (req, res) => {
+  try {
+    console.log('=== DELETE PROJECT REQUEST ===');
+    console.log('Project ID:', req.params.id);
+    console.log('User ID:', req.userId);
+
+    const project = await ThesisProject.findById(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found'
+      });
+    }
+
+    console.log('Project found:', {
+      projectId: project._id,
+      supervisor: project.supervisor,
+      currentUser: req.userId
+    });
+
+    // Check if current user is the supervisor or admin
+    const currentUser = await User.findById(req.userId);
+    const isSupervisor = project.supervisor && project.supervisor.toString() === req.userId;
+    const isAdmin = currentUser.role === 'admin';
+
+    if (!isSupervisor && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only the project supervisor or admin can delete this project'
+      });
+    }
+
+    console.log('Permission check passed - user can delete project');
+
+    // Delete associated notifications
+    try {
+      await Notification.deleteMany({
+        $or: [
+          { relatedId: project._id },
+          { 'actionData.projectId': project._id }
+        ]
+      });
+      console.log('Associated notifications deleted');
+    } catch (notificationError) {
+      console.log('Warning: Could not delete notifications:', notificationError.message);
+    }
+
+    // Delete the project
+    await ThesisProject.findByIdAndDelete(req.params.id);
+    console.log('Project deleted successfully');
+
+    res.json({
+      success: true,
+      message: 'Project deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete project error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error',
@@ -747,6 +848,262 @@ router.delete('/cleanup/test-projects', auth, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error during cleanup',
+      error: error.message
+    });
+  }
+});
+
+// Kanban Task Management Routes
+
+// Get project tasks
+router.get('/:id/tasks', auth, async (req, res) => {
+  try {
+    const project = await ThesisProject.findById(req.params.id)
+      .populate('tasks.assignedTo', 'name email');
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      tasks: project.tasks
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+});
+
+// Update project tasks (bulk update for drag & drop)
+router.put('/:id/tasks', auth, async (req, res) => {
+  try {
+    const project = await ThesisProject.findById(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found'
+      });
+    }
+
+    const { tasks } = req.body;
+
+    // Validate task data
+    if (!Array.isArray(tasks)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tasks must be an array'
+      });
+    }
+
+    // Update tasks
+    project.tasks = tasks.map(task => ({
+      ...task,
+      assignedTo: task.assignedTo?._id || task.assignedTo || null
+    }));
+
+    // Add activity log
+    project.activityLog.push({
+      action: 'tasks_updated',
+      actor: req.userId,
+      timestamp: new Date(),
+      details: { tasksCount: tasks.length }
+    });
+
+    await project.save();
+
+    // Populate assignedTo field for response
+    await project.populate('tasks.assignedTo', 'name email');
+
+    res.json({
+      success: true,
+      message: 'Tasks updated successfully',
+      tasks: project.tasks
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+});
+
+// Add new task
+router.post('/:id/tasks', auth, async (req, res) => {
+  try {
+    const project = await ThesisProject.findById(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found'
+      });
+    }
+
+    const { title, description, status, priority, assignedTo, dueDate } = req.body;
+
+    if (!title) {
+      return res.status(400).json({
+        success: false,
+        message: 'Task title is required'
+      });
+    }
+
+    const newTask = {
+      id: Date.now().toString(),
+      title,
+      description: description || '',
+      status: status || 'ideas',
+      priority: priority || 'medium',
+      assignedTo: assignedTo || null,
+      dueDate: dueDate || null,
+      createdAt: new Date()
+    };
+
+    project.tasks.push(newTask);
+
+    // Add activity log
+    project.activityLog.push({
+      action: 'task_created',
+      actor: req.userId,
+      timestamp: new Date(),
+      details: { taskTitle: title, taskStatus: status }
+    });
+
+    await project.save();
+
+    // Populate assignedTo field for response
+    await project.populate('tasks.assignedTo', 'name email');
+
+    res.json({
+      success: true,
+      message: 'Task created successfully',
+      task: project.tasks[project.tasks.length - 1]
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+});
+
+// Update specific task
+router.put('/:id/tasks/:taskId', auth, async (req, res) => {
+  try {
+    const project = await ThesisProject.findById(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found'
+      });
+    }
+
+    const taskIndex = project.tasks.findIndex(task => task.id === req.params.taskId);
+    
+    if (taskIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    const { title, description, status, priority, assignedTo, dueDate } = req.body;
+
+    // Update task fields
+    if (title) project.tasks[taskIndex].title = title;
+    if (description !== undefined) project.tasks[taskIndex].description = description;
+    if (status) project.tasks[taskIndex].status = status;
+    if (priority) project.tasks[taskIndex].priority = priority;
+    if (assignedTo !== undefined) project.tasks[taskIndex].assignedTo = assignedTo;
+    if (dueDate !== undefined) project.tasks[taskIndex].dueDate = dueDate;
+
+    // Mark as completed if moved to done
+    if (status === 'done' && !project.tasks[taskIndex].completedAt) {
+      project.tasks[taskIndex].completedAt = new Date();
+    } else if (status !== 'done') {
+      project.tasks[taskIndex].completedAt = null;
+    }
+
+    // Add activity log
+    project.activityLog.push({
+      action: 'task_updated',
+      actor: req.userId,
+      timestamp: new Date(),
+      details: { taskTitle: title, newStatus: status }
+    });
+
+    await project.save();
+
+    // Populate assignedTo field for response
+    await project.populate('tasks.assignedTo', 'name email');
+
+    res.json({
+      success: true,
+      message: 'Task updated successfully',
+      task: project.tasks[taskIndex]
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+});
+
+// Delete task
+router.delete('/:id/tasks/:taskId', auth, async (req, res) => {
+  try {
+    const project = await ThesisProject.findById(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found'
+      });
+    }
+
+    const taskIndex = project.tasks.findIndex(task => task.id === req.params.taskId);
+    
+    if (taskIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    const deletedTask = project.tasks[taskIndex];
+    project.tasks.splice(taskIndex, 1);
+
+    // Add activity log
+    project.activityLog.push({
+      action: 'task_deleted',
+      actor: req.userId,
+      timestamp: new Date(),
+      details: { taskTitle: deletedTask.title }
+    });
+
+    await project.save();
+
+    res.json({
+      success: true,
+      message: 'Task deleted successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
       error: error.message
     });
   }

@@ -54,7 +54,7 @@ export default function Navigation() {
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            Teams
+            {user?.role === 'supervisor' ? 'Available Teams' : 'Teams'}
           </Link>
           <Link 
             to="/messages" 
@@ -89,7 +89,7 @@ export default function Navigation() {
         </nav>
         
         <div className="flex items-center gap-3">
-          {(user?.role === 'supervisor' || user?.role === 'admin') && (
+          {user?.role === 'admin' && (
             <Link to="/projects">
               <Button variant="outline" size="sm">
                 <Plus className="h-4 w-4 mr-2" />

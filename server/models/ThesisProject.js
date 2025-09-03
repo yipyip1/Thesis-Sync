@@ -81,6 +81,26 @@ const thesisProjectSchema = new mongoose.Schema({
     version: { type: Number, default: 1 },
     isLatest: { type: Boolean, default: true }
   }],
+  // Kanban Task Management
+  tasks: [{
+    id: { type: String, required: true },
+    title: { type: String, required: true },
+    description: String,
+    status: { 
+      type: String, 
+      enum: ['ideas', 'in_progress', 'done'], 
+      default: 'ideas' 
+    },
+    priority: { 
+      type: String, 
+      enum: ['low', 'medium', 'high'], 
+      default: 'medium' 
+    },
+    assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    dueDate: Date,
+    createdAt: { type: Date, default: Date.now },
+    completedAt: Date
+  }],
   // Communication and Collaboration
   teamChat: {
     type: mongoose.Schema.Types.ObjectId,

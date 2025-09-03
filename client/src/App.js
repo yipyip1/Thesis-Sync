@@ -10,6 +10,7 @@ import ProjectsPage from './pages/ProjectsPage';
 import TeamsPage from './pages/TeamsPage';
 import MessagesPageNew from './pages/MessagesPageNew';
 import IdeasPage from './pages/IdeasPage';
+import SupervisorsPage from './pages/SupervisorsPage';
 import AdminPage from './pages/AdminPage';
 import ProfilePage from './pages/ProfilePage';
 import ActivityPage from './pages/ActivityPage';
@@ -45,6 +46,21 @@ const PublicRoute = ({ children }) => {
   return !isAuthenticated ? children : <Navigate to="/dashboard" />;
 };
 
+// Root Route Component that redirects based on auth state
+const RootRoute = () => {
+  const { isAuthenticated, loading } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+  
+  return isAuthenticated ? <Navigate to="/dashboard" /> : <LandingPage />;
+};
+
 function App() {
   return (
     <AuthProvider>
@@ -64,7 +80,7 @@ function App() {
           <Routes>
             <Route 
               path="/" 
-              element={<LandingPage />} 
+              element={<RootRoute />} 
             />
             <Route 
               path="/login" 
@@ -119,6 +135,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <IdeasPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/supervisors" 
+              element={
+                <ProtectedRoute>
+                  <SupervisorsPage />
                 </ProtectedRoute>
               } 
             />

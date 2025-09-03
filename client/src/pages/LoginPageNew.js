@@ -34,10 +34,12 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      const success = await login(formData.email, formData.password);
-      if (success) {
+      const result = await login(formData);
+      if (result.success) {
         toast.success('Welcome back!');
         navigate('/dashboard');
+      } else {
+        toast.error(result.message || 'Login failed. Please try again.');
       }
     } catch (error) {
       toast.error('Login failed. Please try again.');

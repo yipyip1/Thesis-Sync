@@ -36,7 +36,7 @@ const MessageList = ({ messages, currentUser, groupMembers }) => {
             className="rounded-lg shadow-sm max-w-full h-auto cursor-pointer"
             onClick={() => window.open(fileUrl, '_blank')}
           />
-          <p className="text-xs text-gray-500 mt-1">{file.originalName}</p>
+          <p className="text-xs text-muted-foreground mt-1">{file.originalName}</p>
         </div>
       );
     }
@@ -52,30 +52,30 @@ const MessageList = ({ messages, currentUser, groupMembers }) => {
             <source src={fileUrl} type={file.mimeType} />
             Your browser does not support the video tag.
           </video>
-          <p className="text-xs text-gray-500 mt-1">{file.originalName}</p>
+          <p className="text-xs text-muted-foreground mt-1">{file.originalName}</p>
         </div>
       );
     }
 
     // For PDFs and other files
     return (
-      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 max-w-xs">
+      <div className="bg-muted border border-border rounded-lg p-3 max-w-xs">
         <div className="flex items-center space-x-3">
-          <div className="text-red-500">
+          <div className="text-destructive">
             <DocumentIcon className="w-8 h-8" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-800 truncate">
+            <p className="text-sm font-medium text-foreground truncate">
               {file.originalName}
             </p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               {(file.size / 1024 / 1024).toFixed(2)} MB
             </p>
           </div>
           <a
             href={fileUrl}
             download={file.originalName}
-            className="text-blue-500 hover:text-blue-700"
+            className="text-primary hover:text-primary/80"
           >
             <ArrowDownTrayIcon className="w-5 h-5" />
           </a>
@@ -92,7 +92,7 @@ const MessageList = ({ messages, currentUser, groupMembers }) => {
       <div key={message._id}>
         {showDateSeparator && (
           <div className="flex justify-center my-4">
-            <span className="bg-gray-100 text-gray-600 text-xs px-3 py-1 rounded-full">
+            <span className="bg-muted text-muted-foreground text-xs px-3 py-1 rounded-full">
               {formatDate(message.createdAt)}
             </span>
           </div>
@@ -102,10 +102,10 @@ const MessageList = ({ messages, currentUser, groupMembers }) => {
           <div className={`max-w-xs lg:max-w-md ${isOwnMessage ? 'order-2' : 'order-1'}`}>
             {!isOwnMessage && (
               <div className="flex items-center space-x-2 mb-1">
-                <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-semibold">
+                <div className="w-6 h-6 bg-muted rounded-full flex items-center justify-center text-muted-foreground text-xs font-semibold">
                   {(message.sender.name || message.sender.username || message.sender.email || 'U').charAt(0).toUpperCase()}
                 </div>
-                <span className="text-xs text-gray-600 font-medium">
+                <span className="text-xs text-foreground font-medium">
                   {message.sender.name || message.sender.username || 'Unknown'}
                 </span>
               </div>
@@ -114,8 +114,8 @@ const MessageList = ({ messages, currentUser, groupMembers }) => {
             <div
               className={`px-4 py-2 rounded-lg ${
                 isOwnMessage
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white border border-gray-200'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted border border-border'
               }`}
             >
               {message.messageType === 'text' ? (
@@ -124,7 +124,7 @@ const MessageList = ({ messages, currentUser, groupMembers }) => {
                 renderFileContent(message)
               )}
               
-              <div className={`text-xs mt-1 ${isOwnMessage ? 'text-blue-100' : 'text-gray-500'}`}>
+              <div className={`text-xs mt-1 ${isOwnMessage ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
                 {formatTime(message.createdAt)}
               </div>
             </div>

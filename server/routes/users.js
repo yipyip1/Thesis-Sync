@@ -39,6 +39,31 @@ const upload = multer({
   }
 });
 
+// Get all users (for admin and supervisor functionality)
+router.get('/', auth, async (req, res) => {
+  try {
+    // Only allow admin and supervisors to get all users
+    const currentUser = await User.findById(req.userId);
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'supervisor')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
+    }
+
+    const users = await User.find().select('-password');
+    res.json({
+      success: true,
+      users
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
 // Get current user profile
 router.get('/profile', auth, async (req, res) => {
   try {

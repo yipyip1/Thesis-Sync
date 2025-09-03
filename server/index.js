@@ -14,6 +14,7 @@ const userRoutes = require('./routes/users');
 const thesisIdeaRoutes = require('./routes/thesisIdeas');
 const teamRequestRoutes = require('./routes/teamRequests');
 const thesisProjectRoutes = require('./routes/thesisProjects');
+const thesisApplicationRoutes = require('./routes/thesisApplications');
 const notificationRoutes = require('./routes/notifications');
 const emailTestRoutes = require('./routes/emailTest');
 const simpleEmailTestRoutes = require('./routes/simpleEmailTest');
@@ -25,14 +26,32 @@ const app = express();
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Add request logging middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  if (req.path.includes('team-requests') && req.method === 'PUT') {
+    console.log('Team request PUT detected:', {
+      path: req.path,
+      body: req.body,
+      headers: req.headers.authorization ? 'Auth header present' : 'No auth header'
+    });
+  }
+  next();
+});
+
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/thesis-ideas', thesisIdeaRoutes);
-app.use('/api/team-requests', teamRequestRoutes);
+app.use('/api/team-requests', (req, res, next) => {
+  req.io = io;
+  next();
+}, teamRequestRoutes);
 app.use('/api/thesis-projects', thesisProjectRoutes);
+app.use('/api/thesis-applications', thesisApplicationRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/email-test', emailTestRoutes);
 app.use('/api/simple-email-test', simpleEmailTestRoutes);
@@ -49,11 +68,18 @@ const io = new Server(server, {
   cors: {
     origin: '*',
     methods: ['GET', 'POST']
-  }
+  },
+  pingTimeout: 60000,    // 60 seconds before considering connection dead
+  pingInterval: 25000,   // Ping every 25 seconds
+  upgradeTimeout: 30000, // 30 seconds to upgrade transport
+  allowUpgrades: true,
+  transports: ['websocket', 'polling'],
+  allowEIO3: true
 });
 
 // Connected users and their socket info
-const connectedUsers = new Map();
+const connectedUsers = new Map(); // socketId -> {userId, name, avatar}
+const userSockets = new Map(); // userId -> socketId (for finding socket by userId)
 const groupRooms = new Map(); // groupId -> Set of userIds
 const videoCallRooms = new Map(); // callId -> Set of userIds with their peer info
 
@@ -61,19 +87,45 @@ const videoCallRooms = new Map(); // callId -> Set of userIds with their peer in
 io.on('connection', (socket) => {
   console.log('[SERVER] New connection:', socket.id);
 
+  // Add error handlers
+  socket.on('error', (error) => {
+    console.error(`[SERVER] Socket error for ${socket.id}:`, error);
+  });
+
+  socket.on('connect_error', (error) => {
+    console.error(`[SERVER] Connection error for ${socket.id}:`, error);
+  });
+
   // User authentication and joining
   socket.on('user-connected', async (userData) => {
+    console.log(`[SERVER] Received user-connected event from ${socket.id}`);
+    console.log(`[SERVER] User data:`, userData);
     try {
       console.log(`[SERVER] User ${userData.name} connected with socket ${socket.id}`);
       
       const userId = userData.userId || userData.id;
       
+      // Check if user already has a connection and disconnect old one
+      if (userSockets.has(userId)) {
+        const oldSocketId = userSockets.get(userId);
+        console.log(`[SERVER] User ${userId} already has connection ${oldSocketId}, disconnecting old one`);
+        const oldSocket = io.sockets.sockets.get(oldSocketId);
+        if (oldSocket) {
+          oldSocket.disconnect();
+        }
+        connectedUsers.delete(oldSocketId);
+      }
+      
       // Store user connection info
       connectedUsers.set(socket.id, {
         userId: userId,
         name: userData.name,
+        username: userData.username || userData.name,
         avatar: userData.avatar
       });
+      
+      // Store reverse mapping
+      userSockets.set(userId, socket.id);
 
       // Join user to their personal notification room
       socket.join(`user-${userId}`);
@@ -85,15 +137,28 @@ io.on('connection', (socket) => {
         lastSeen: new Date()
       });
 
+      // Send acknowledgment back to client
+      socket.emit('user-connected-ack', {
+        success: true,
+        userId: userId,
+        socketId: socket.id
+      });
+      console.log(`[SERVER] Sent user-connected-ack to ${userId}`);
+
       // Notify all connected users about this user coming online
       socket.broadcast.emit('user-online', {
         userId: userId,
         name: userData.name,
+        username: userData.username || userData.name,
         avatar: userData.avatar
       });
 
     } catch (error) {
       console.error('[SERVER] Error in user-connected:', error);
+      socket.emit('user-connected-ack', {
+        success: false,
+        error: error.message
+      });
     }
   });
 
@@ -159,9 +224,28 @@ io.on('connection', (socket) => {
 
   // Handle new chat messages
   socket.on('new-message', (messageData) => {
-  console.log(`[SERVER] New message in group ${messageData.groupId}`);
-  // Broadcast message to all group members including sender
-  io.to(`group-${messageData.groupId}`).emit('message-received', messageData);
+    console.log(`[SERVER] New message received from ${socket.id}:`, messageData);
+    console.log(`[SERVER] Broadcasting to group ${messageData.groupId}`);
+    
+    // Broadcast message to all group members except sender
+    socket.to(`group-${messageData.groupId}`).emit('message-received', messageData);
+    console.log(`[SERVER] Message broadcasted to group-${messageData.groupId}`);
+  });
+
+  // Handle new direct messages
+  socket.on('new-direct-message', (messageData) => {
+    console.log(`[SERVER] New direct message from ${socket.id} to user ${messageData.receiverId}:`, messageData);
+    
+    // Send to receiver
+    const receiverSocketId = userSockets.get(messageData.receiverId);
+    if (receiverSocketId) {
+      console.log(`[SERVER] Sending direct message to receiver socket ${receiverSocketId}`);
+      io.to(receiverSocketId).emit('direct-message-received', messageData);
+    } else {
+      console.log(`[SERVER] Receiver ${messageData.receiverId} not online`);
+    }
+    
+    console.log(`[SERVER] Direct message processed`);
   });
 
   // Handle typing indicators
@@ -351,12 +435,18 @@ io.on('connection', (socket) => {
     io.to(`group-${groupId}`).emit('video-call-ended', { callId });
   });
 
+  // Handle heartbeat ping from client
+  socket.on('ping', () => {
+    socket.emit('pong');
+  });
+
   // Handle disconnection
-  socket.on('disconnect', async () => {
-    console.log('[SERVER] Disconnected:', socket.id);
+  socket.on('disconnect', async (reason) => {
+    console.log(`[SERVER] Disconnected: ${socket.id}, Reason: ${reason}`);
     
     const userInfo = connectedUsers.get(socket.id);
     if (userInfo) {
+      console.log(`[SERVER] User ${userInfo.name} (${userInfo.userId}) disconnected due to: ${reason}`);
       try {
         // Update user offline status in database
         await User.findByIdAndUpdate(userInfo.userId, { 
@@ -401,6 +491,8 @@ io.on('connection', (socket) => {
         console.error('[SERVER] Error in disconnect handler:', error);
       }
       
+      // Clean up user tracking
+      userSockets.delete(userInfo.userId);
       connectedUsers.delete(socket.id);
     }
   });
@@ -410,10 +502,31 @@ app.get('/', (req, res) => {
   res.send('Thesis-Sync Chat & Video Call Server');
 });
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('MongoDB connection error:', err));
+// Connect to MongoDB with retry logic
+const connectDB = async () => {
+  try {
+    const conn = await mongoose.connect(process.env.MONGODB_URI, {
+      // Use only basic, widely supported options
+    });
+    console.log('Connected to MongoDB');
+    return conn;
+  } catch (error) {
+    console.error('MongoDB connection error:', error);
+    console.log('Retrying MongoDB connection in 5 seconds...');
+    setTimeout(connectDB, 5000);
+  }
+};
+
+// Handle MongoDB connection events
+mongoose.connection.on('disconnected', () => {
+  console.log('MongoDB disconnected! Attempting to reconnect...');
+});
+
+mongoose.connection.on('error', (err) => {
+  console.error('MongoDB connection error:', err);
+});
+
+connectDB();
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

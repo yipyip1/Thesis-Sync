@@ -59,6 +59,20 @@ const initialState = {
 export const AuthProvider = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
+  // Function to establish socket connection with retry logic
+  const establishSocketConnection = async (userData) => {
+    try {
+      await socketService.connect(userData);
+      console.log('✅ [AuthContext] Socket connected successfully');
+    } catch (socketError) {
+      console.error('❌ [AuthContext] Socket connection failed:', socketError);
+      
+      // Don't automatically retry - let the user manually refresh if needed
+      // The app should still work without real-time features
+      console.log('ℹ️ [AuthContext] App will continue without real-time features');
+    }
+  };
+
   useEffect(() => {
     // Check if user is already logged in
     const token = localStorage.getItem('token');
@@ -67,49 +81,80 @@ export const AuthProvider = ({ children }) => {
     if (token && user) {
       try {
         const userData = JSON.parse(user);
-        dispatch({
-          type: 'LOGIN_SUCCESS',
-          payload: { token, user: userData }
-        });
         
-        // Connect to socket
-        socketService.connect(userData);
+        // Validate token by making a quick API call
+        const validateToken = async () => {
+          try {
+            const response = await axios.get('http://localhost:5000/api/users/profile', {
+              headers: { Authorization: `Bearer ${token}` },
+              timeout: 5000
+            });
+            
+            if (response.data.success) {
+              dispatch({
+                type: 'LOGIN_SUCCESS',
+                payload: { token, user: userData }
+              });
+              
+              // Establish socket connection
+              establishSocketConnection(userData);
+            } else {
+              throw new Error('Token validation failed');
+            }
+          } catch (error) {
+            console.error('Token validation error:', error);
+            dispatch({ type: 'AUTH_ERROR', payload: 'Session expired' });
+          }
+        };
+        
+        validateToken();
       } catch (error) {
-        dispatch({ type: 'AUTH_ERROR', payload: 'Invalid stored data' });
+        console.error('Error parsing stored user data:', error);
+        dispatch({ type: 'AUTH_ERROR', payload: 'Invalid session data' });
       }
     } else {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
   }, []);
 
-  const login = async (email, password) => {
+  const login = async (credentials) => {
+    dispatch({ type: 'SET_LOADING', payload: true });
+    
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/login', {
-        email,
-        password
-      });
+      const response = await axios.post('http://localhost:5000/api/auth/login', credentials);
       
       if (response.data.success) {
         dispatch({
           type: 'LOGIN_SUCCESS',
-          payload: {
-            token: response.data.token,
-            user: response.data.user
-          }
+          payload: response.data
         });
         
-        // Connect to socket
-        socketService.connect(response.data.user);
-        return true;
+        // Establish socket connection after successful login
+        establishSocketConnection(response.data.user);
+        
+        return { success: true };
+      } else {
+        throw new Error(response.data.message || 'Login failed');
       }
-      return false;
     } catch (error) {
-      dispatch({ type: 'AUTH_ERROR', payload: error.response?.data?.message || 'Login failed' });
-      throw error;
+      const errorMessage = error.response?.data?.message || error.message || 'Login failed';
+      dispatch({ type: 'AUTH_ERROR', payload: errorMessage });
+      return { success: false, message: errorMessage };
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    dispatch({ type: 'SET_LOADING', payload: true });
+    
+    try {
+      // Disconnect socket before logout
+      if (socketService.isConnected) {
+        socketService.disconnect();
+      }
+    } catch (error) {
+      console.error('Error disconnecting socket:', error);
+    }
+    
     dispatch({ type: 'LOGOUT' });
     dispatch({ type: 'SET_LOADING', payload: false });
   };
@@ -134,5 +179,3 @@ export const useAuth = () => {
   }
   return context;
 };
-
-export { AuthContext };

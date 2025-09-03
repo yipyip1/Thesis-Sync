@@ -138,30 +138,30 @@ const MessageInput = ({ onSendMessage, onTyping }) => {
       
       {/* Drag overlay */}
       {isDragActive && (
-        <div className="absolute inset-0 bg-blue-100 bg-opacity-90 border-2 border-dashed border-blue-400 rounded-lg flex items-center justify-center z-10">
+        <div className="absolute inset-0 bg-muted border-2 border-dashed border-primary rounded-lg flex items-center justify-center z-10">
           <div className="text-center">
-            <PaperClipIcon className="w-8 h-8 text-blue-500 mx-auto mb-2" />
-            <p className="text-blue-600 font-medium">Drop your file here</p>
+            <PaperClipIcon className="w-8 h-8 text-primary mx-auto mb-2" />
+            <p className="text-foreground font-medium">Drop your file here</p>
           </div>
         </div>
       )}
 
       {/* File attachment preview */}
       {attachedFile && (
-        <div className="mb-3 p-3 bg-gray-50 rounded-lg border">
+        <div className="mb-3 p-3 bg-muted rounded-lg border border-border">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="text-blue-500">
+              <div className="text-primary">
                 {getFileIcon(attachedFile)}
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-800">{attachedFile.name}</p>
-                <p className="text-xs text-gray-500">{formatFileSize(attachedFile.size)}</p>
+                <p className="text-sm font-medium text-foreground">{attachedFile.name}</p>
+                <p className="text-xs text-muted-foreground">{formatFileSize(attachedFile.size)}</p>
               </div>
             </div>
             <button
               onClick={removeAttachedFile}
-              className="text-gray-400 hover:text-red-500"
+              className="text-muted-foreground hover:text-destructive"
             >
               ×
             </button>
@@ -179,13 +179,13 @@ const MessageInput = ({ onSendMessage, onTyping }) => {
               onKeyPress={handleKeyPress}
               placeholder="Type a message..."
               rows={1}
-              className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              className="w-full px-4 py-3 pr-12 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary resize-none bg-background text-foreground placeholder-muted-foreground"
               style={{ minHeight: '48px', maxHeight: '120px' }}
             />
             <button
               type="button"
               onClick={open}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
             >
               <PaperClipIcon className="w-5 h-5" />
             </button>
@@ -195,7 +195,7 @@ const MessageInput = ({ onSendMessage, onTyping }) => {
         <button
           type="submit"
           disabled={!message.trim() && !attachedFile}
-          className="bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="bg-primary text-primary-foreground p-3 rounded-lg hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <PaperAirplaneIcon className="w-5 h-5" />
         </button>

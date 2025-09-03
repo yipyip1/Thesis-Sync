@@ -10,7 +10,8 @@ import {
   X, 
   MessageSquare,
   Clock,
-  MoreHorizontal
+  MoreHorizontal,
+  Trash2
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { notificationAPI, teamRequestAPI } from '../utils/api';
@@ -59,15 +60,19 @@ export default function NotificationPanel() {
   const handleManageApplication = async (teamId, applicationId, status) => {
     try {
       setLoading(true);
-      await teamRequestAPI.manageApplication(teamId, applicationId, status);
+      const response = await teamRequestAPI.manageApplication(teamId, applicationId, status);
+      console.log('Manage application response:', response);
+      
+      // Show success message
       toast.success(`Application ${status} successfully`);
       
       // Refresh notifications after action
       await fetchNotifications();
       
     } catch (error) {
-      toast.error(`Failed to ${status} application`);
       console.error('Manage application error:', error);
+      const errorMessage = error.response?.data?.message || error.message || `Failed to ${status} application`;
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -90,6 +95,58 @@ export default function NotificationPanel() {
     } catch (error) {
       console.error('Error marking all as read:', error);
       toast.error('Failed to mark notifications as read');
+    }
+  };
+
+  const clearAllNotifications = async () => {
+    if (!window.confirm('Are you sure you want to clear all notifications? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      console.log('About to call clearAllNotifications API...');
+      console.log('API base URL:', 'http://localhost:5000/api');
+      console.log('Token:', localStorage.getItem('token'));
+      
+      // Try a simple test first
+      try {
+        console.log('Testing simple GET request...');
+        const testResponse = await fetch('http://localhost:5000/api/notifications/test', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        console.log('Test response status:', testResponse.status);
+        const testData = await testResponse.json();
+        console.log('Test response data:', testData);
+      } catch (testError) {
+        console.error('Test request failed:', testError);
+      }
+      
+      // Now try the actual clear request
+      console.log('Testing clear-all endpoint...');
+      const response = await notificationAPI.clearAllNotifications();
+      console.log('Clear notifications response:', response);
+      console.log('Response status:', response.status);
+      console.log('Response data:', response.data);
+      
+      // Refresh notifications first
+      await fetchNotifications();
+      
+      // Show success message
+      const deletedCount = response.data?.deletedCount || response.data?.message || 'All';
+      toast.success(`${deletedCount} notifications cleared successfully`);
+    } catch (error) {
+      console.error('Error clearing all notifications:', error);
+      console.error('Error response:', error.response);
+      console.error('Error message:', error.message);
+      console.error('Error status:', error.response?.status);
+      console.error('Error data:', error.response?.data);
+      
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to clear notifications';
+      toast.error(errorMessage);
     }
   };
 
@@ -164,6 +221,12 @@ export default function NotificationPanel() {
                       <span className="text-xs text-muted-foreground">Mark all read</span>
                     </Button>
                   )}
+                  {notifications.length > 0 && (
+                    <Button variant="ghost" size="sm" onClick={clearAllNotifications} className="h-6 px-2 text-destructive hover:text-destructive">
+                      <Trash2 className="h-3 w-3 mr-1" />
+                      <span className="text-xs">Clear all</span>
+                    </Button>
+                  )}
                   <Button variant="ghost" size="sm" onClick={() => setIsOpen(false)} className="h-6 w-6 p-0">
                     <X className="h-3 w-3" />
                   </Button>
@@ -172,7 +235,7 @@ export default function NotificationPanel() {
             </CardHeader>
             
             <CardContent className="p-0">
-              <div className="max-h-80 overflow-y-auto">
+              <div className="max-h-80 overflow-y-auto overflow-x-hidden">
                 {notifications.length === 0 ? (
                   <div className="p-6 text-center">
                     <Bell className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
@@ -184,20 +247,20 @@ export default function NotificationPanel() {
                     {notifications.map((notification) => (
                       <div
                         key={notification._id}
-                        className={`p-4 transition-colors hover:bg-muted/50 cursor-pointer ${
+                        className={`p-3 transition-colors hover:bg-muted/50 cursor-pointer ${
                           !notification.isRead ? 'bg-accent/30 border-l-2 border-l-primary' : ''
                         }`}
                         onClick={() => !notification.isRead && markAsRead(notification._id)}
                       >
-                        <div className="flex items-start gap-3">
+                        <div className="flex items-start gap-3 w-full">
                           <div className="mt-0.5 flex-shrink-0">
                             {getNotificationIcon(notification.type)}
                           </div>
                           
-                          <div className="flex-1 min-w-0">
+                          <div className="flex-1 min-w-0 w-full">
                             {/* Enhanced rendering for team applications */}
                             {notification.type === 'team_application' ? (
-                              <div className="space-y-3">
+                              <div className="space-y-2 w-full">
                                 <div>
                                   <p className="font-medium text-sm text-card-foreground leading-tight">
                                     {notification.title}
@@ -207,9 +270,9 @@ export default function NotificationPanel() {
                                   </p>
                                 </div>
                                 
-                                {/* Elegant Action Buttons */}
+                                {/* Contained Action Buttons */}
                                 {notification.actionData?.applicationId && notification.actionData?.teamId && (
-                                  <div className="flex gap-2">
+                                  <div className="flex gap-2 w-full">
                                     <Button
                                       size="sm"
                                       onClick={(e) => {
@@ -221,7 +284,7 @@ export default function NotificationPanel() {
                                         );
                                       }}
                                       disabled={loading}
-                                      className="h-7 px-3 text-xs bg-primary hover:bg-primary/90 text-primary-foreground"
+                                      className="h-6 px-2 text-xs bg-primary hover:bg-primary/90 text-primary-foreground flex-1 min-w-0"
                                     >
                                       <Check className="h-3 w-3 mr-1" />
                                       Accept
@@ -238,7 +301,7 @@ export default function NotificationPanel() {
                                         );
                                       }}
                                       disabled={loading}
-                                      className="h-7 px-3 text-xs border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                                      className="h-6 px-2 text-xs border-border text-muted-foreground hover:bg-muted hover:text-foreground flex-1 min-w-0"
                                     >
                                       <X className="h-3 w-3 mr-1" />
                                       Decline

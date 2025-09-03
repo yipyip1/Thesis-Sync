@@ -103,6 +103,45 @@ router.put('/mark-all-read', auth, async (req, res) => {
   }
 });
 
+// Clear all notifications for user (MUST come before /:id route)
+router.delete('/clear-all', auth, async (req, res) => {
+  try {
+    console.log('=== CLEAR ALL NOTIFICATIONS ENDPOINT HIT ===');
+    console.log('User ID:', req.userId);
+    console.log('Request headers:', req.headers);
+    
+    if (!req.userId) {
+      console.log('ERROR: No user ID found in request');
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required'
+      });
+    }
+    
+    console.log('Attempting to delete notifications for user:', req.userId);
+    const result = await Notification.deleteMany({ recipient: req.userId });
+    console.log('Delete operation result:', result);
+
+    const response = {
+      success: true,
+      message: `${result.deletedCount} notifications cleared successfully`,
+      deletedCount: result.deletedCount
+    };
+    
+    console.log('Sending response:', response);
+    res.json(response);
+  } catch (error) {
+    console.error('=== CLEAR ALL NOTIFICATIONS ERROR ===');
+    console.error('Error details:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+});
+
 // Delete notification
 router.delete('/:id', auth, async (req, res) => {
   try {
@@ -250,6 +289,26 @@ router.post('/deadline-reminders', auth, async (req, res) => {
       error: error.message
     });
   }
+});
+
+// Test endpoint to verify route is working
+router.get('/test', auth, async (req, res) => {
+  console.log('TEST ENDPOINT HIT - User ID:', req.userId);
+  res.json({
+    success: true,
+    message: 'Test endpoint working',
+    userId: req.userId
+  });
+});
+
+// Simple test for clear endpoint
+router.get('/clear-test', auth, async (req, res) => {
+  console.log('CLEAR TEST ENDPOINT HIT - User ID:', req.userId);
+  res.json({
+    success: true,
+    message: 'Clear test endpoint working',
+    userId: req.userId
+  });
 });
 
 module.exports = router;
