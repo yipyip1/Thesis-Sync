@@ -74,6 +74,13 @@ const ChatWindow = ({ group, user, onAddMember }) => {
 
   const setupSocketListeners = () => {
     const socket = socketService.getSocket();
+    console.log('🎧 [ChatWindow] Setting up socket listeners...');
+    console.log('🎧 [ChatWindow] Socket exists:', !!socket);
+    console.log('🎧 [ChatWindow] Socket connected:', socket?.connected);
+    console.log('🎧 [ChatWindow] Socket ID:', socket?.id);
+    console.log('🎧 [ChatWindow] Current group ID:', group?._id);
+    console.log('🎧 [ChatWindow] Current user ID:', user?.userId || user?.id);
+    
     if (socket) {
       socket.on('message-received', (messageData) => {
         // Only add message if current user is NOT the sender (to avoid duplication)
@@ -98,13 +105,44 @@ const ChatWindow = ({ group, user, onAddMember }) => {
 
       // Listen for incoming video calls - show notification popup for non-initiators
       socket.on('video-call-started', (data) => {
+        console.log('🎯 [ChatWindow] ===== VIDEO CALL EVENT RECEIVED =====');
+        console.log('🎯 [ChatWindow] Event data:', JSON.stringify(data, null, 2));
+        console.log('🎯 [ChatWindow] Socket ID:', socket.id);
+        console.log('🎯 [ChatWindow] Socket connected:', socket.connected);
+        console.log('🎯 [ChatWindow] Timestamp:', new Date().toLocaleTimeString());
+        
         // Only show popup if this user is NOT the initiator
         const currentUserId = user?.userId || user?.id;
+        console.log('🎯 [ChatWindow] Current user ID:', currentUserId);
+        console.log('🎯 [ChatWindow] Initiator ID:', data.initiator?.userId || data.initiator?.id);
+        
         if (data.initiator?.userId !== currentUserId && data.initiator?.id !== currentUserId) {
+          console.log('✅ [ChatWindow] User is NOT initiator - setting incoming call');
+          console.log('✅ [ChatWindow] Setting incoming call ID:', data.callId);
+          console.log('✅ [ChatWindow] Setting showVideoCall to true');
           setIncomingCallId(data.callId);
           setShowVideoCall(true);
+        } else {
+          console.log('❌ [ChatWindow] User IS the initiator - not showing popup');
         }
+        console.log('🎯 [ChatWindow] ===== VIDEO CALL EVENT PROCESSED =====');
       });
+
+      // Add debugging listener to see ALL events
+      const originalEmit = socket.emit;
+      const originalOn = socket.on;
+      
+      // Log when we register event listeners
+      socket.on = function(event, handler) {
+        if (event === 'video-call-started') {
+          console.log('🎧 [ChatWindow] Registering video-call-started listener');
+        }
+        return originalOn.call(this, event, handler);
+      };
+
+      console.log('🎧 [ChatWindow] All socket listeners registered successfully');
+    } else {
+      console.error('❌ [ChatWindow] No socket available - listeners not set up!');
     }
   };
 
@@ -241,15 +279,26 @@ const ChatWindow = ({ group, user, onAddMember }) => {
 
       {/* Video Call Modal */}
       {showVideoCall && group && user && (
-        <VideoCall
-          group={group}
-          user={user}
-          incomingCallId={incomingCallId}
-          onClose={() => {
-            setShowVideoCall(false);
-            setIncomingCallId(null);
-          }}
-        />
+        (() => {
+          console.log('🎯 [ChatWindow] Rendering VideoCall with props:', {
+            groupId: group._id,
+            userId: user?.userId || user?.id,
+            incomingCallId,
+            showVideoCall
+          });
+          return (
+            <VideoCall
+              group={group}
+              user={user}
+              incomingCallId={incomingCallId}
+              onClose={() => {
+                console.log('🎯 [ChatWindow] VideoCall onClose called');
+                setShowVideoCall(false);
+                setIncomingCallId(null);
+              }}
+            />
+          );
+        })()
       )}
     </div>
   );

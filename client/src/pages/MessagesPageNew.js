@@ -21,7 +21,8 @@ import ChatWindowNew from '../components/ChatWindowNew';
 import GroupListNew from '../components/GroupListNew';
 import CreateGroupModal from '../components/CreateGroupModal';
 import AddMemberModal from '../components/AddMemberModal';
-import VideoCall from '../components/VideoCall';
+import VideoCallNew from '../components/VideoCallNew';
+import IncomingCallNotification from '../components/IncomingCallNotification';
 import socketService from '../utils/socketService';
 import { groupAPI, messageAPI } from '../utils/api';
 import toast from 'react-hot-toast';
@@ -37,6 +38,9 @@ export default function MessagesPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showVideoCall, setShowVideoCall] = useState(false);
+  const [incomingCallId, setIncomingCallId] = useState(null);
+  const [showIncomingCallNotification, setShowIncomingCallNotification] = useState(false);
+  const [pendingCallData, setPendingCallData] = useState(null);
   const [messageRequests, setMessageRequests] = useState([]);
   const [showMessageRequests, setShowMessageRequests] = useState(false);
 
@@ -192,10 +196,56 @@ export default function MessagesPage() {
     setShowAddMemberModal(false);
   };
 
-  const handleStartVideoCall = () => {
+  const handleStartVideoCall = (callId = null, callerInfo = null) => {
+    console.log('📞 [MessagesPageNew] handleStartVideoCall called with callId:', callId);
+    console.log('📞 [MessagesPageNew] callId type:', typeof callId);
+    console.log('📞 [MessagesPageNew] callerInfo:', callerInfo);
+    
+    // Ensure callId is either null or a string, not an event object
+    const validCallId = (typeof callId === 'string') ? callId : null;
+    
     if (selectedGroup) {
-      setShowVideoCall(true);
+      console.log('📞 [MessagesPageNew] Setting up video call for group:', selectedGroup._id);
+      console.log('📞 [MessagesPageNew] Valid callId:', validCallId);
+      
+      if (validCallId && callerInfo) {
+        // This is an incoming call - show notification instead of directly joining
+        console.log('📞 [MessagesPageNew] Incoming call detected, showing notification');
+        setPendingCallData({
+          callId: validCallId,
+          caller: callerInfo,
+          group: selectedGroup
+        });
+        setShowIncomingCallNotification(true);
+      } else {
+        // This is an outgoing call - start immediately
+        console.log('📞 [MessagesPageNew] Outgoing call, starting immediately');
+        setIncomingCallId(null); // No incoming call ID for outgoing calls
+        setShowVideoCall(true);
+      }
+    } else {
+      console.error('❌ [MessagesPageNew] No selected group for video call');
     }
+  };
+
+  const handleAcceptCall = () => {
+    console.log('✅ [MessagesPageNew] Call accepted');
+    if (pendingCallData) {
+      setIncomingCallId(pendingCallData.callId);
+      setShowVideoCall(true);
+      setShowIncomingCallNotification(false);
+      setPendingCallData(null);
+    }
+  };
+
+  const handleDeclineCall = () => {
+    console.log('❌ [MessagesPageNew] Call declined');
+    if (pendingCallData) {
+      // Send decline signal to caller
+      socketService.declineVideoCall(pendingCallData.callId, pendingCallData.group._id);
+    }
+    setShowIncomingCallNotification(false);
+    setPendingCallData(null);
   };
 
   const filteredConversations = allConversations.filter(conversation => {
@@ -311,7 +361,7 @@ export default function MessagesPage() {
                       <Button 
                         variant="ghost" 
                         size="sm"
-                        onClick={handleStartVideoCall}
+                        onClick={() => handleStartVideoCall()}
                         className="flex items-center gap-1"
                       >
                         <Video className="h-4 w-4" />
@@ -463,14 +513,27 @@ export default function MessagesPage() {
                 End Call
               </Button>
             </div>
-            <VideoCall
+            <VideoCallNew
               group={selectedGroup}
               user={user}
-              onClose={() => setShowVideoCall(false)}
+              incomingCallId={incomingCallId}
+              onClose={() => {
+                setShowVideoCall(false);
+                setIncomingCallId(null);
+              }}
             />
           </div>
         </div>
       )}
+
+      {/* Incoming Call Notification */}
+      <IncomingCallNotification
+        caller={pendingCallData?.caller}
+        groupName={pendingCallData?.group?.name}
+        onAccept={handleAcceptCall}
+        onDecline={handleDeclineCall}
+        isVisible={showIncomingCallNotification}
+      />
     </div>
   );
 }

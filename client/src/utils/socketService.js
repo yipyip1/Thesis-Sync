@@ -290,8 +290,13 @@ class SocketService {
   // Group chat methods
   joinGroup(groupId) {
     if (this.socket) {
-      console.log(`[CLIENT] Joining group: ${groupId}`);
+      console.log('🏠 [SocketService] Joining group:', groupId);
+      console.log('🏠 [SocketService] Socket ID:', this.socket.id);
+      console.log('🏠 [SocketService] Socket connected:', this.socket.connected);
+      console.log('🏠 [SocketService] Timestamp:', new Date().toLocaleTimeString());
       this.socket.emit('join-group', groupId);
+    } else {
+      console.error('❌ [SocketService] No socket available for joinGroup!');
     }
   }
 
@@ -330,13 +335,23 @@ class SocketService {
   // Video call methods
   startVideoCall(groupId, callId) {
     if (this.socket) {
+      console.log('📡 [SocketService] Emitting start-video-call:', { groupId, callId });
+      console.log('📡 [SocketService] Socket ID:', this.socket.id);
+      console.log('📡 [SocketService] Socket connected:', this.socket.connected);
       this.socket.emit('start-video-call', { groupId, callId });
+    } else {
+      console.error('❌ [SocketService] No socket available for startVideoCall!');
     }
   }
 
   joinVideoCall(callId, groupId) {
     if (this.socket) {
+      console.log('📡 [SocketService] Emitting join-video-call:', { callId, groupId });
+      console.log('📡 [SocketService] Socket ID:', this.socket.id);
+      console.log('📡 [SocketService] Socket connected:', this.socket.connected);
       this.socket.emit('join-video-call', { callId, groupId });
+    } else {
+      console.error('❌ [SocketService] No socket available for joinVideoCall!');
     }
   }
 
@@ -349,6 +364,13 @@ class SocketService {
   endVideoCall(callId, groupId) {
     if (this.socket) {
       this.socket.emit('end-video-call', { callId, groupId });
+    }
+  }
+
+  declineVideoCall(callId, groupId) {
+    if (this.socket) {
+      console.log('📡 [SocketService] Emitting decline-video-call:', { callId, groupId });
+      this.socket.emit('decline-video-call', { callId, groupId });
     }
   }
 
