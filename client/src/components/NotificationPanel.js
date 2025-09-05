@@ -105,13 +105,13 @@ export default function NotificationPanel() {
 
     try {
       console.log('About to call clearAllNotifications API...');
-      console.log('API base URL:', 'http://localhost:5000/api');
+      console.log('API base URL:', 'https://thesis-sync-production.up.railway.app/api');
       console.log('Token:', localStorage.getItem('token'));
       
       // Try a simple test first
       try {
         console.log('Testing simple GET request...');
-        const testResponse = await fetch('http://localhost:5000/api/notifications/test', {
+        const testResponse = await fetch('https://thesis-sync-production.up.railway.app/api/notifications/test', {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`,

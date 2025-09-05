@@ -25,7 +25,7 @@ const MessageList = ({ messages, currentUser, groupMembers }) => {
 
   const renderFileContent = (message) => {
     const { file } = message;
-    const fileUrl = `http://localhost:5000${file.url}`;
+    const fileUrl = `https://thesis-sync-production.up.railway.app${file.url}`;
 
     if (message.messageType === 'image') {
       return (

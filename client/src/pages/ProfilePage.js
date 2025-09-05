@@ -258,7 +258,7 @@ export default function ProfilePage() {
                     <div className="w-32 h-32 bg-primary/10 rounded-full flex items-center justify-center overflow-hidden">
                       {user?.avatar ? (
                         <img 
-                          src={`http://localhost:5000${user.avatar}`} 
+                          src={`https://thesis-sync-production.up.railway.app${user.avatar}`} 
                           alt={user.name} 
                           className="w-full h-full object-cover" 
                         />

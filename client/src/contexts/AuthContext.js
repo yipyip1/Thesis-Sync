@@ -85,7 +85,7 @@ export const AuthProvider = ({ children }) => {
         // Validate token by making a quick API call
         const validateToken = async () => {
           try {
-            const response = await axios.get('http://localhost:5000/api/users/profile', {
+            const response = await axios.get('https://thesis-sync-production.up.railway.app/api/users/profile', {
               headers: { Authorization: `Bearer ${token}` },
               timeout: 5000
             });
@@ -121,8 +121,8 @@ export const AuthProvider = ({ children }) => {
     dispatch({ type: 'SET_LOADING', payload: true });
     
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/login', credentials);
-      
+      const response = await axios.post('https://thesis-sync-production.up.railway.app/api/auth/login', credentials);
+
       if (response.data.success) {
         dispatch({
           type: 'LOGIN_SUCCESS',

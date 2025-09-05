@@ -81,8 +81,8 @@ class SocketService {
           instance: this.instanceKey
         };
         
-        console.log(`🔌 [SocketService-${this.instanceKey}] Creating new socket connection to http://localhost:5000`);
-        this.socket = io('http://localhost:5000', {
+        console.log(`🔌 [SocketService-${this.instanceKey}] Creating new socket connection to https://thesis-sync-production.up.railway.app`);
+        this.socket = io('https://thesis-sync-production.up.railway.app', {
           transports: ['websocket', 'polling'],
           timeout: 8000,                // Reduced timeout to 8s for faster failure detection
           reconnection: false,          // Disable auto-reconnection to avoid conflicts

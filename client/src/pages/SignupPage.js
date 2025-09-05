@@ -50,7 +50,7 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/register', {
+      const response = await axios.post('https://thesis-sync-production.up.railway.app/api/auth/register', {
         name: `${formData.firstName} ${formData.lastName}`,
         email: formData.email,
         password: formData.password,
