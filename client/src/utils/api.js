@@ -6,6 +6,7 @@ const API_BASE_URL = 'https://thesis-sync.onrender.com/api'; // Update with your
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 15000, // 15 second timeout
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
