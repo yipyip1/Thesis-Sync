@@ -41,10 +41,10 @@ export default function LandingPage() {
       <section className="py-20 px-4">
         <div className="container mx-auto text-center max-w-4xl">
           <Badge variant="secondary" className="mb-4">
-            AI-Powered Academic Platform
+            Academic Platform
           </Badge>
           <h2 className="text-5xl font-bold text-foreground mb-6 text-balance">
-            Streamline Your Thesis Journey with <span className="text-accent">AI-Powered</span> Collaboration
+            Streamline Your Thesis Journey with Smart Collaboration
           </h2>
           <p className="text-xl text-muted-foreground mb-8 text-pretty max-w-2xl mx-auto">
             Connect students and supervisors, track progress with intelligent insights, and collaborate seamlessly on
