@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { SERVER_URL } from '../utils/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -258,7 +259,7 @@ export default function ProfilePage() {
                     <div className="w-32 h-32 bg-primary/10 rounded-full flex items-center justify-center overflow-hidden">
                       {user?.avatar ? (
                         <img 
-                          src={`https://thesis-sync-production.up.railway.app${user.avatar}`} 
+                          src={`${SERVER_URL}${user.avatar}`} 
                           alt={user.name} 
                           className="w-full h-full object-cover" 
                         />

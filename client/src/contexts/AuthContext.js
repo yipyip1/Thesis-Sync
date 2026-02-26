@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import axios from 'axios';
+import { SERVER_URL } from '../utils/api';
 import socketService from '../utils/socketService';
 
 const AuthContext = createContext();
@@ -85,7 +86,7 @@ export const AuthProvider = ({ children }) => {
         // Validate token by making a quick API call
         const validateToken = async () => {
           try {
-            const response = await axios.get('https://thesis-sync-production.up.railway.app/api/users/profile', {
+            const response = await axios.get(`${SERVER_URL}/api/users/profile`, {
               headers: { Authorization: `Bearer ${token}` },
               timeout: 5000
             });
@@ -121,7 +122,7 @@ export const AuthProvider = ({ children }) => {
     dispatch({ type: 'SET_LOADING', payload: true });
     
     try {
-      const response = await axios.post('https://thesis-sync-production.up.railway.app/api/auth/login', credentials);
+      const response = await axios.post(`${SERVER_URL}/api/auth/login`, credentials);
 
       if (response.data.success) {
         dispatch({

@@ -1,5 +1,6 @@
 import React from 'react';
 import { format } from 'date-fns';
+import { SERVER_URL } from '../utils/api';
 import { 
   DocumentIcon, 
   PhotoIcon,
@@ -25,7 +26,7 @@ const MessageList = ({ messages, currentUser, groupMembers }) => {
 
   const renderFileContent = (message) => {
     const { file } = message;
-    const fileUrl = `https://thesis-sync-production.up.railway.app${file.url}`;
+    const fileUrl = `${SERVER_URL}${file.url}`;
 
     if (message.messageType === 'image') {
       return (

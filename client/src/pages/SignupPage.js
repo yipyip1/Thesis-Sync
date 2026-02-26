@@ -6,8 +6,8 @@ import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { BookOpen } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import toast from 'react-hot-toast';
+import api from '../utils/api';
 
 export default function SignupPage() {
   const [formData, setFormData] = useState({
@@ -50,7 +50,7 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      const response = await axios.post('https://thesis-sync-production.up.railway.app/api/auth/register', {
+      const response = await api.post('/auth/register', {
         name: `${formData.firstName} ${formData.lastName}`,
         email: formData.email,
         password: formData.password,

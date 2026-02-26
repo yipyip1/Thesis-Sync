@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { SERVER_URL } from '../utils/api';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
@@ -105,13 +106,13 @@ export default function NotificationPanel() {
 
     try {
       console.log('About to call clearAllNotifications API...');
-      console.log('API base URL:', 'https://thesis-sync-production.up.railway.app/api');
+      console.log('API base URL:', `${SERVER_URL}/api`);
       console.log('Token:', localStorage.getItem('token'));
       
       // Try a simple test first
       try {
         console.log('Testing simple GET request...');
-        const testResponse = await fetch('https://thesis-sync-production.up.railway.app/api/notifications/test', {
+        const testResponse = await fetch(`${SERVER_URL}/api/notifications/test`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`,

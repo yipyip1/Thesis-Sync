@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'https://thesis-sync.onrender.com/api'; // Update with your actual API base URL
+export const SERVER_URL = 'https://thesis-sync.onrender.com';
+const API_BASE_URL = `${SERVER_URL}/api`;
 
 // Create axios instance with timeout and retry configuration
 const api = axios.create({
